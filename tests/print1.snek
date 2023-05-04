@@ -1,0 +1,4 @@
+(+ (print (- input 3)) 3)
+; (dynamic "invalid argument")
+; ((input 5) (output 2 5))
+; ((input -3) (output -6 -3))

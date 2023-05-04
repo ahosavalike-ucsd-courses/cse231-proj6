@@ -13,3 +13,4 @@
   )
 )
 (fact input)
+; ((input 10) (output 3628800))
