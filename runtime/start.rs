@@ -30,12 +30,8 @@ fn parse_input(input: &str) -> u64 {
     }
 }
 
-fn main() {
-    let args: Vec<String> = env::args().collect();
-    let input = if args.len() == 2 { &args[1] } else { "false" };
-    let input = parse_input(&input);
-
-    let i: u64 = unsafe { our_code_starts_here(input) };
+#[export_name = "\x01snek_print"]
+pub extern "C" fn snek_print(i: u64) -> u64 {
     if i % 2 == 0 {
         println!("{}", i as i64 / 2);
     } else if i == 1 {
@@ -45,4 +41,14 @@ fn main() {
     } else {
         snek_error(1);
     }
+    i
+}
+
+fn main() {
+    let args: Vec<String> = env::args().collect();
+    let input = if args.len() == 2 { &args[1] } else { "false" };
+    let input = parse_input(&input);
+
+    let i: u64 = unsafe { our_code_starts_here(input) };
+    snek_print(i);
 }

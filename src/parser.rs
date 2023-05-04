@@ -2,9 +2,20 @@ use crate::structs::*;
 use sexp::Atom::*;
 use sexp::*;
 
+pub fn parse_top_level(s: &Sexp) -> Expr {
+    if let Sexp::List(v) = s {
+        if let [_fns @ .., expr] = &v[..] {
+            // TODO: parse each fns
+            return parse_expr(expr);
+        }
+    }
+    panic!("Invalid")
+}
+
 pub fn parse_expr(s: &Sexp) -> Expr {
     let keywords = &vec![
         "add1", "sub1", "let", "isnum", "isbool", "if", "loop", "break", "set!", "block", "input",
+        "print",
     ];
     match s {
         // Num
@@ -40,6 +51,7 @@ pub fn parse_expr(s: &Sexp) -> Expr {
                         "sub1" => Op1::Sub1,
                         "isnum" => Op1::IsNum,
                         "isbool" => Op1::IsBool,
+                        "print" => Op1::Print,
                         _ => panic!("Invalid"),
                     },
                     Box::new(parse_expr(e)),

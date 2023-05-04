@@ -49,7 +49,7 @@ pub fn compile_expr(e: &Expr, co: &Context, com: &mut ContextMut) -> Vec<Instr> 
             }
 
             let res = Imm64(i);
-            instrs.push(Mov(co.get_target(res)));
+            instrs.push(Mov(co.src_to_target(res)));
 
             com.result_is_bool = Some(false);
         }
@@ -58,7 +58,7 @@ pub fn compile_expr(e: &Expr, co: &Context, com: &mut ContextMut) -> Vec<Instr> 
                 true => TRUE,
                 false => FALSE,
             };
-            instrs.push(Mov(co.get_target(res)));
+            instrs.push(Mov(co.src_to_target(res)));
             com.result_is_bool = Some(true);
         }
         Expr::Var(x) => {
@@ -97,7 +97,7 @@ pub fn compile_expr(e: &Expr, co: &Context, com: &mut ContextMut) -> Vec<Instr> 
                 Op1::Add1 => {
                     // Check if Rax is number
                     if com.result_is_bool.is_none() {
-                        instrs.push(Test(co.get_target(Imm(1))));
+                        instrs.push(Test(co.src_to_target(Imm(1))));
                         instrs.push(Mov(ToReg(Rdi, Imm(20)))); // invalid argument
                         instrs.push(JumpI(Jump::Nz(snek_error.clone())));
                     } else if com.result_is_bool.unwrap() {
@@ -106,7 +106,7 @@ pub fn compile_expr(e: &Expr, co: &Context, com: &mut ContextMut) -> Vec<Instr> 
                         com.result_is_bool = Some(false);
                         return instrs;
                     }
-                    instrs.push(Add(co.get_target(Imm(2))));
+                    instrs.push(Add(co.src_to_target(Imm(2))));
                     // Check overflow
                     instrs.push(Mov(ToReg(Rdi, Imm(30))));
                     instrs.push(JumpI(Jump::O(snek_error)));
@@ -115,7 +115,7 @@ pub fn compile_expr(e: &Expr, co: &Context, com: &mut ContextMut) -> Vec<Instr> 
                 Op1::Sub1 => {
                     // Check if Rax is number
                     if com.result_is_bool.is_none() {
-                        instrs.push(Test(co.get_target(Imm(1))));
+                        instrs.push(Test(co.src_to_target(Imm(1))));
                         instrs.push(Mov(ToReg(Rdi, Imm(20)))); // invalid argument
                         instrs.push(JumpI(Jump::Nz(snek_error.clone())));
                     } else if com.result_is_bool.unwrap() {
@@ -124,14 +124,14 @@ pub fn compile_expr(e: &Expr, co: &Context, com: &mut ContextMut) -> Vec<Instr> 
                         com.result_is_bool = Some(false);
                         return instrs;
                     }
-                    instrs.push(Sub(co.get_target(Imm(2))));
+                    instrs.push(Sub(co.src_to_target(Imm(2))));
                     // Check overflow
                     instrs.push(Mov(ToReg(Rdi, Imm(30))));
                     instrs.push(JumpI(Jump::O(snek_error)));
                     com.result_is_bool = Some(false);
                 }
                 Op1::IsBool => {
-                    instrs.push(And(co.get_target(Imm(1))));
+                    instrs.push(And(co.src_to_target(Imm(1))));
                     instrs.push(Mov(ToReg(Rax, TRUE))); // Set true
                     instrs.push(Mov(ToReg(Rbx, FALSE)));
                     instrs.push(CMovI(CMov::Z(Rax, OReg(Rbx)))); // Set false if zero
@@ -140,13 +140,17 @@ pub fn compile_expr(e: &Expr, co: &Context, com: &mut ContextMut) -> Vec<Instr> 
                     com.result_is_bool = Some(true);
                 }
                 Op1::IsNum => {
-                    instrs.push(And(co.get_target(Imm(1))));
+                    instrs.push(And(co.src_to_target(Imm(1))));
                     instrs.push(Mov(ToReg(Rax, FALSE))); // Set false
                     instrs.push(Mov(ToReg(Rbx, TRUE)));
                     instrs.push(CMovI(CMov::Z(Rax, OReg(Rbx)))); // Set true if zero
                     co.rax_to_target(&mut instrs);
 
                     com.result_is_bool = Some(true);
+                }
+                Op1::Print => {
+                    instrs.extend(co.target_to_reg(Rdi));
+                    instrs.push(Call(Label::new(Some("snek_print"))));
                 }
             }
         }

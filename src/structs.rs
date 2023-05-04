@@ -11,6 +11,7 @@ pub enum Op1 {
     Sub1,
     IsNum,
     IsBool,
+    Print,
 }
 
 #[derive(Debug)]
@@ -196,7 +197,16 @@ impl Context {
             target,
         }
     }
-    pub fn get_target(&self, src: Arg64) -> MovArgs {
+    pub fn target_to_reg(&self, dst: Reg) -> Vec<Instr> {
+        match &self.target {
+            None => match &dst {
+                Rax => vec![],
+                r => vec![Mov(ToReg(r.clone(), OReg(Rax)))],
+            },
+            Some(m) => vec![Mov(ToReg(dst, Mem(m.clone())))],
+        }
+    }
+    pub fn src_to_target(&self, src: Arg64) -> MovArgs {
         match &self.target {
             None => ToReg(Rax, src),
             Some(m) => ToMem(m.clone(), src),
@@ -425,6 +435,7 @@ pub enum Instr {
     Sar(Reg, i8),
     LabelI(Label),
     JumpI(Jump),
+    Call(Label),
 }
 use Instr::*;
 
@@ -445,6 +456,7 @@ impl fmt::Display for Instr {
             Mul(r, a) => write!(f, "imul {r}, {a}"),
             Xor(r, a) => write!(f, "xor {r}, {a}"),
             Sar(r, i) => write!(f, "sar {r}, {i}"),
+            Call(l) => write!(f, "call {l}"),
         }
     }
 }
@@ -596,6 +608,7 @@ impl Instr {
             Sar(r, i) => dynasm!(ops; .arch x64; sar Rq(r.asm()), *i),
             LabelI(l) => dynasm!(ops; .arch x64; =>*lbls.get(l).unwrap()),
             JumpI(j) => j.asm(ops, lbls),
+            Call(l) => dynasm!(ops; .arch x64; call =>*lbls.get(l).unwrap()),
         }
     }
 }

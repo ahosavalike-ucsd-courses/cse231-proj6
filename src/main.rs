@@ -27,7 +27,8 @@ fn main() -> std::io::Result<()> {
     let mut in_contents = String::new();
     in_file.read_to_string(&mut in_contents)?;
 
-    let expr = parse_expr(&parse(&in_contents).expect("Invalid"));
+    let expr =
+        parse_top_level(&parse(&format!("(\n{in_contents}\n)").to_string()).expect("Invalid"));
 
     if args[1] == "-e" {
         return Ok(repl(Some((
@@ -42,6 +43,7 @@ fn main() -> std::io::Result<()> {
     let asm_program = format!(
         "section .text
 extern snek_error
+extern snek_print
 global our_code_starts_here
 our_code_starts_here:
 {}
