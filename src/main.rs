@@ -1,30 +1,58 @@
+use sexp::*;
 use std::env;
 use std::fs::File;
 use std::io::prelude::*;
 
+mod parser;
+use parser::*;
+mod compiler;
+use compiler::*;
+mod repl;
+use repl::*;
+mod structs;
+use structs::*;
+
 fn main() -> std::io::Result<()> {
     let args: Vec<String> = env::args().collect();
 
-    let in_name = &args[1];
+    if args[1] == "-i" {
+        return Ok(repl(None));
+    }
+
+    let in_name = if args[1] == "-e" { &args[2] } else { &args[1] };
+
     let out_name = &args[2];
 
-    // You will make result hold the result of actually compiling
-    let result = "mov rax, 131";
+    let mut in_file = File::open(in_name)?;
+    let mut in_contents = String::new();
+    in_file.read_to_string(&mut in_contents)?;
+
+    let expr = parse_expr(&parse(&in_contents).expect("Invalid"));
+
+    if args[1] == "-e" {
+        return Ok(repl(Some((
+            &expr,
+            if args.len() > 3 { &args[3] } else { "false" },
+        ))));
+    }
+
+    let result =
+        compile_expr_with_unknown_input(&expr, &Context::new(None), &mut ContextMut::new());
 
     let asm_program = format!(
-        "
-section .text
+        "section .text
 extern snek_error
 global our_code_starts_here
 our_code_starts_here:
-  {}
-  ret
+{}
+ret
 ",
-        result
+        instrs_to_string(&result)
     );
 
     let mut out_file = File::create(out_name)?;
     out_file.write_all(asm_program.as_bytes())?;
+    // repl(Some(&result));
 
     Ok(())
 }
