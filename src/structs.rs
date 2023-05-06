@@ -143,7 +143,7 @@ pub struct Context {
 impl Context {
     pub fn new(heap: Option<*mut u64>) -> Context {
         Context {
-            si: 2,
+            si: 0,
             heap,
             hi: 0,
             env: hashmap! {},

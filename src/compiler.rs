@@ -39,24 +39,24 @@ pub fn depth(e: &Expr) -> u64 {
 
 pub fn compile_expr_with_unknown_input(e: &Expr, co: &Context) -> Vec<Instr> {
     let com = &mut ContextMut::new();
-    let dep = depth(e) as i32 + 3;  // 2 for call stack, 1 for input
+    let dep = depth(e) as i32 + 2; // 1 extra for input
     let mut instrs: Vec<Instr> = vec![
         Sub(ToReg(Rsp, Imm(dep * 8))),
         Mov(ToMem(
             MemRef {
                 reg: Rsp,
-                offset: co.si,
+                offset: dep - 2,
             },
             OReg(Rdi),
-        ))
+        )),
     ];
     instrs.extend(compile_expr(
         e,
         &co.modify(
-            Some(co.si + 1),
+            None,
             Some(
                 co.env
-                    .update("input".to_string(), VarEnv::new(co.si, None, false)),
+                    .update("input".to_string(), VarEnv::new(dep - 2, None, false)),
             ),
             None,
             None,
