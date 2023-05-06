@@ -37,8 +37,7 @@ fn main() -> std::io::Result<()> {
         ))));
     }
 
-    let result =
-        compile_expr_with_unknown_input(&expr, &Context::new(None), &mut ContextMut::new());
+    let result = compile_expr_with_unknown_input(&expr, &Context::new(None));
 
     let asm_program = format!(
         "section .text

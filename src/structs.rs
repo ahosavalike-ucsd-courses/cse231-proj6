@@ -285,7 +285,7 @@ impl CMov {
             CMov::E(r, a) => match a {
                 OReg(o) => dynasm!(ops; .arch x64; cmove Rq(r.asm()), Rq(o.asm())),
                 Mem(m) => {
-                    dynasm!(ops; .arch x64; cmove Rq(r.asm()), [Rq(m.reg.asm()) - m.offset*8])
+                    dynasm!(ops; .arch x64; cmove Rq(r.asm()), [Rq(m.reg.asm()) + m.offset*8])
                 }
                 Imm(_) => panic!("cannot use immediate with cmove"),
                 Imm64(_) => panic!("cannot use immediate with cmove"),
@@ -293,7 +293,7 @@ impl CMov {
             CMov::Z(r, a) => match a {
                 OReg(o) => dynasm!(ops; .arch x64; cmovz Rq(r.asm()), Rq(o.asm())),
                 Mem(m) => {
-                    dynasm!(ops; .arch x64; cmovz Rq(r.asm()), [Rq(m.reg.asm()) - m.offset*8])
+                    dynasm!(ops; .arch x64; cmovz Rq(r.asm()), [Rq(m.reg.asm()) + m.offset*8])
                 }
                 Imm(_) => panic!("cannot use immediate with cmovz"),
                 Imm64(_) => panic!("cannot use immediate with cmovz"),
@@ -301,7 +301,7 @@ impl CMov {
             CMov::G(r, a) => match a {
                 OReg(o) => dynasm!(ops; .arch x64; cmovg Rq(r.asm()), Rq(o.asm())),
                 Mem(m) => {
-                    dynasm!(ops; .arch x64; cmovg Rq(r.asm()), [Rq(m.reg.asm()) - m.offset*8])
+                    dynasm!(ops; .arch x64; cmovg Rq(r.asm()), [Rq(m.reg.asm()) + m.offset*8])
                 }
                 Imm(_) => panic!("cannot use immediate with cmovg"),
                 Imm64(_) => panic!("cannot use immediate with cmovg"),
@@ -309,7 +309,7 @@ impl CMov {
             CMov::GE(r, a) => match a {
                 OReg(o) => dynasm!(ops; .arch x64; cmovge Rq(r.asm()), Rq(o.asm())),
                 Mem(m) => {
-                    dynasm!(ops; .arch x64; cmovge Rq(r.asm()), [Rq(m.reg.asm()) - m.offset*8])
+                    dynasm!(ops; .arch x64; cmovge Rq(r.asm()), [Rq(m.reg.asm()) + m.offset*8])
                 }
                 Imm(_) => panic!("cannot use immediate with cmovge"),
                 Imm64(_) => panic!("cannot use immediate with cmovge"),
@@ -317,7 +317,7 @@ impl CMov {
             CMov::L(r, a) => match a {
                 OReg(o) => dynasm!(ops; .arch x64; cmovl Rq(r.asm()), Rq(o.asm())),
                 Mem(m) => {
-                    dynasm!(ops; .arch x64; cmovl Rq(r.asm()), [Rq(m.reg.asm()) - m.offset*8])
+                    dynasm!(ops; .arch x64; cmovl Rq(r.asm()), [Rq(m.reg.asm()) + m.offset*8])
                 }
                 Imm(_) => panic!("cannot use immediate with cmovl"),
                 Imm64(_) => panic!("cannot use immediate with cmovl"),
@@ -325,7 +325,7 @@ impl CMov {
             CMov::LE(r, a) => match a {
                 OReg(o) => dynasm!(ops; .arch x64; cmovle Rq(r.asm()), Rq(o.asm())),
                 Mem(m) => {
-                    dynasm!(ops; .arch x64; cmovle Rq(r.asm()), [Rq(m.reg.asm()) - m.offset*8])
+                    dynasm!(ops; .arch x64; cmovle Rq(r.asm()), [Rq(m.reg.asm()) + m.offset*8])
                 }
                 Imm(_) => panic!("cannot use immediate with cmovle"),
                 Imm64(_) => panic!("cannot use immediate with cmovle"),
@@ -378,7 +378,7 @@ pub struct MemRef {
 
 impl fmt::Display for MemRef {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "QWORD [{}-{}]", self.reg, self.offset * 8)
+        write!(f, "QWORD [{}+{}]", self.reg, self.offset * 8)
     }
 }
 
@@ -470,22 +470,22 @@ impl Instr {
                     Imm(n) => dynasm!(ops; .arch x64; mov Rq(r.asm()), *n),
                     Imm64(n) => dynasm!(ops; .arch x64; mov Rq(r.asm()), QWORD *n),
                     Mem(m) => {
-                        dynasm!(ops; .arch x64; mov Rq(r.asm()), [Rq(m.reg.asm()) - m.offset*8])
+                        dynasm!(ops; .arch x64; mov Rq(r.asm()), [Rq(m.reg.asm()) + m.offset*8])
                     }
                 },
                 ToMem(m, a) => match a {
                     OReg(r) => {
-                        dynasm!(ops; .arch x64; mov [Rq(m.reg.asm()) - m.offset*8], Rq(r.asm()))
+                        dynasm!(ops; .arch x64; mov [Rq(m.reg.asm()) + m.offset*8], Rq(r.asm()))
                     }
                     Imm(n) => {
-                        dynasm!(ops; .arch x64; mov QWORD [Rq(m.reg.asm()) - m.offset*8], *n)
+                        dynasm!(ops; .arch x64; mov QWORD [Rq(m.reg.asm()) + m.offset*8], *n)
                     }
                     Imm64(n) => match i32::try_from(*n) {
                         Ok(n) => {
-                            dynasm!(ops; .arch x64; mov QWORD [Rq(m.reg.asm()) - m.offset*8], n)
+                            dynasm!(ops; .arch x64; mov QWORD [Rq(m.reg.asm()) + m.offset*8], n)
                         }
                         Err(_) => {
-                            dynasm!(ops; .arch x64; mov rcx, QWORD *n; mov QWORD [Rq(m.reg.asm()) - m.offset*8], rcx)
+                            dynasm!(ops; .arch x64; mov rcx, QWORD *n; mov QWORD [Rq(m.reg.asm()) + m.offset*8], rcx)
                         }
                     },
                     Mem(_) => panic!("cannot mov from memory to memory"),
@@ -497,15 +497,15 @@ impl Instr {
                     Imm(n) => dynasm!(ops; .arch x64; add Rq(r.asm()), *n),
                     Imm64(_) => panic!("cannot add from imm64 to reg"),
                     Mem(m) => {
-                        dynasm!(ops; .arch x64; add Rq(r.asm()), [Rq(m.reg.asm()) - m.offset*8])
+                        dynasm!(ops; .arch x64; add Rq(r.asm()), [Rq(m.reg.asm()) + m.offset*8])
                     }
                 },
                 ToMem(m, a) => match a {
                     OReg(r) => {
-                        dynasm!(ops; .arch x64; add [Rq(m.reg.asm()) - m.offset*8], Rq(r.asm()))
+                        dynasm!(ops; .arch x64; add [Rq(m.reg.asm()) + m.offset*8], Rq(r.asm()))
                     }
                     Imm(n) => {
-                        dynasm!(ops; .arch x64; add QWORD [Rq(m.reg.asm()) - m.offset*8], *n)
+                        dynasm!(ops; .arch x64; add QWORD [Rq(m.reg.asm()) + m.offset*8], *n)
                     }
                     Imm64(_) => panic!("cannot add from imm64 to memory"),
                     Mem(_) => panic!("cannot add from memory to memory"),
@@ -517,15 +517,15 @@ impl Instr {
                     Imm(n) => dynasm!(ops; .arch x64; sub Rq(r.asm()), *n),
                     Imm64(_) => panic!("cannot sub from imm64 to reg"),
                     Mem(m) => {
-                        dynasm!(ops; .arch x64; sub Rq(r.asm()), [Rq(m.reg.asm()) - m.offset*8])
+                        dynasm!(ops; .arch x64; sub Rq(r.asm()), [Rq(m.reg.asm()) + m.offset*8])
                     }
                 },
                 ToMem(m, a) => match a {
                     OReg(r) => {
-                        dynasm!(ops; .arch x64; sub [Rq(m.reg.asm()) - m.offset*8], Rq(r.asm()))
+                        dynasm!(ops; .arch x64; sub [Rq(m.reg.asm()) + m.offset*8], Rq(r.asm()))
                     }
                     Imm(n) => {
-                        dynasm!(ops; .arch x64; sub QWORD [Rq(m.reg.asm()) - m.offset*8], *n)
+                        dynasm!(ops; .arch x64; sub QWORD [Rq(m.reg.asm()) + m.offset*8], *n)
                     }
                     Imm64(_) => panic!("cannot sub from imm64 to memory"),
                     Mem(_) => panic!("cannot sub from memory to memory"),
@@ -537,15 +537,15 @@ impl Instr {
                     Imm(n) => dynasm!(ops; .arch x64; and Rq(r.asm()), *n),
                     Imm64(_) => panic!("cannot add from imm64 to reg"),
                     Mem(m) => {
-                        dynasm!(ops; .arch x64; and Rq(r.asm()), [Rq(m.reg.asm()) - m.offset*8])
+                        dynasm!(ops; .arch x64; and Rq(r.asm()), [Rq(m.reg.asm()) + m.offset*8])
                     }
                 },
                 ToMem(m, a) => match a {
                     OReg(r) => {
-                        dynasm!(ops; .arch x64; and [Rq(m.reg.asm()) - m.offset*8], Rq(r.asm()))
+                        dynasm!(ops; .arch x64; and [Rq(m.reg.asm()) + m.offset*8], Rq(r.asm()))
                     }
                     Imm(n) => {
-                        dynasm!(ops; .arch x64; and QWORD [Rq(m.reg.asm()) - m.offset*8], *n)
+                        dynasm!(ops; .arch x64; and QWORD [Rq(m.reg.asm()) + m.offset*8], *n)
                     }
                     Imm64(_) => panic!("cannot and from imm64 to memory"),
                     Mem(_) => panic!("cannot and from memory to memory"),
@@ -557,15 +557,15 @@ impl Instr {
                     Imm(n) => dynasm!(ops; .arch x64; cmp Rq(r.asm()), *n),
                     Imm64(_) => panic!("cannot cmp with imm64"),
                     Mem(m) => {
-                        dynasm!(ops; .arch x64; cmp Rq(r.asm()), [Rq(m.reg.asm()) - m.offset*8])
+                        dynasm!(ops; .arch x64; cmp Rq(r.asm()), [Rq(m.reg.asm()) + m.offset*8])
                     }
                 },
                 ToMem(m, a) => match a {
                     OReg(r) => {
-                        dynasm!(ops; .arch x64; cmp [Rq(m.reg.asm()) - m.offset*8], Rq(r.asm()))
+                        dynasm!(ops; .arch x64; cmp [Rq(m.reg.asm()) + m.offset*8], Rq(r.asm()))
                     }
                     Imm(n) => {
-                        dynasm!(ops; .arch x64; cmp QWORD [Rq(m.reg.asm()) - m.offset*8], *n)
+                        dynasm!(ops; .arch x64; cmp QWORD [Rq(m.reg.asm()) + m.offset*8], *n)
                     }
                     Imm64(_) => panic!("cannot cmp with imm64"),
                     Mem(_) => panic!("cannot cmp from memory to memory"),
@@ -579,15 +579,15 @@ impl Instr {
                     Imm(n) => dynasm!(ops; .arch x64; test Rq(r.asm()), DWORD *n),
                     Imm64(_) => panic!("cannot test with imm64"),
                     Mem(m) => {
-                        dynasm!(ops; .arch x64; test Rq(r.asm()), [Rq(m.reg.asm()) - m.offset*8])
+                        dynasm!(ops; .arch x64; test Rq(r.asm()), [Rq(m.reg.asm()) + m.offset*8])
                     }
                 },
                 ToMem(m, a) => match a {
                     OReg(r) => {
-                        dynasm!(ops; .arch x64; test [Rq(m.reg.asm()) - m.offset*8], Rq(r.asm()))
+                        dynasm!(ops; .arch x64; test [Rq(m.reg.asm()) + m.offset*8], Rq(r.asm()))
                     }
                     Imm(n) => {
-                        dynasm!(ops; .arch x64; test QWORD [Rq(m.reg.asm()) - m.offset*8], DWORD *n)
+                        dynasm!(ops; .arch x64; test QWORD [Rq(m.reg.asm()) + m.offset*8], DWORD *n)
                     }
                     Imm64(_) => panic!("cannot test with imm64"),
                     Mem(_) => panic!("cannot test from memory to memory"),
@@ -596,12 +596,12 @@ impl Instr {
             CMovI(c) => c.asm(ops),
             Mul(r, a) => match a {
                 OReg(r) => dynasm!(ops; .arch x64; imul Rq(r.asm()), Rq(r.asm())),
-                Mem(m) => dynasm!(ops; .arch x64; imul Rq(r.asm()), [Rq(m.reg.asm()) - m.offset*8]),
+                Mem(m) => dynasm!(ops; .arch x64; imul Rq(r.asm()), [Rq(m.reg.asm()) + m.offset*8]),
                 _ => panic!("mul does not support this operand"),
             },
             Xor(r, a) => match a {
                 OReg(r) => dynasm!(ops; .arch x64; xor Rq(r.asm()), Rq(r.asm())),
-                Mem(m) => dynasm!(ops; .arch x64; xor Rq(r.asm()), [Rq(m.reg.asm()) - m.offset*8]),
+                Mem(m) => dynasm!(ops; .arch x64; xor Rq(r.asm()), [Rq(m.reg.asm()) + m.offset*8]),
                 Imm(n) => dynasm!(ops; .arch x64; xor Rq(r.asm()), DWORD *n),
                 Imm64(_) => panic!("cannot add with imm64"),
             },

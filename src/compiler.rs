@@ -12,15 +12,44 @@ use im::HashMap;
 const TRUE: Arg64 = Imm(3);
 const FALSE: Arg64 = Imm(1);
 
-pub fn compile_expr_with_unknown_input(e: &Expr, co: &Context, com: &mut ContextMut) -> Vec<Instr> {
-    let mut instrs: Vec<Instr> = vec![];
-    instrs.push(Mov(ToMem(
-        MemRef {
-            reg: Rsp,
-            offset: co.si,
-        },
-        OReg(Rdi),
-    )));
+pub fn depth(e: &Expr) -> u64 {
+    match e {
+        Expr::Num(_) => 0,
+        Expr::Var(_) => 0,
+        Expr::Boolean(_) => 0,
+        Expr::UnOp(_, e) => depth(e),
+        // Right to left evaluation order
+        Expr::BinOp(_, e1, e2) => depth(e2).max(depth(e1) + 1),
+        Expr::Let(bindings, e) => bindings
+            .iter()
+            .enumerate()
+            .map(|(i, (_, e))| (i as u64 + depth(e)))
+            .max()
+            .unwrap_or(0)
+            .max(bindings.len() as u64 + depth(e)),
+        Expr::If(cond, then, other) => depth(cond).max(depth(then)).max(depth(other)),
+        Expr::Loop(e) => depth(e),
+        Expr::Block(es) => es.iter().map(|expr| depth(expr)).max().unwrap_or(0),
+        Expr::Break(e) => depth(e),
+        Expr::Set(_, e) => depth(e),
+        Expr::Define(_, e) => depth(e),
+        Expr::FnDefn(_, v, b) => depth(b) + v.len() as u64,
+    }
+}
+
+pub fn compile_expr_with_unknown_input(e: &Expr, co: &Context) -> Vec<Instr> {
+    let com = &mut ContextMut::new();
+    let dep = depth(e) as i32 + 3;  // 2 for call stack, 1 for input
+    let mut instrs: Vec<Instr> = vec![
+        Sub(ToReg(Rsp, Imm(dep * 8))),
+        Mov(ToMem(
+            MemRef {
+                reg: Rsp,
+                offset: co.si,
+            },
+            OReg(Rdi),
+        ))
+    ];
     instrs.extend(compile_expr(
         e,
         &co.modify(
@@ -34,6 +63,7 @@ pub fn compile_expr_with_unknown_input(e: &Expr, co: &Context, com: &mut Context
         ),
         com,
     ));
+    instrs.push(Add(ToReg(Rsp, Imm(dep * 8))));
     return instrs;
 }
 
