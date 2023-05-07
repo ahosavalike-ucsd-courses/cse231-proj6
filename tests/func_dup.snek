@@ -1,0 +1,4 @@
+(fun (dup x) x)
+(fun (dup y) y)
+(dup input)
+; (static)

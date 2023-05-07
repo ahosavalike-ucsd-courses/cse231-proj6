@@ -430,6 +430,11 @@ static_error_tests! {
 		expected: "Invalid",
 	},
 	{
+		name: func_dup_3,
+		file: "func_dup.snek",
+		expected: "",
+	},
+	{
 		name: invalid_break_fail0_1,
 		file: "invalid_break_fail0.snek",
 		expected: "break",
