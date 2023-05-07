@@ -485,6 +485,11 @@ static_error_tests! {
 		expected: "Invalid",
 	},
 	{
+		name: func_no_fun_2,
+		file: "func_no_fun.snek",
+		expected: "Invalid",
+	},
+	{
 		name: parse_op_fail2_1,
 		file: "parse_op_fail2.snek",
 		expected: "Invalid",
