@@ -13,7 +13,7 @@ const TRUE: Arg64 = Imm(3);
 const FALSE: Arg64 = Imm(1);
 
 pub fn depth(e: &Expr) -> u64 {
-    match e {
+    let d = match e {
         Expr::Num(_) => 0,
         Expr::Var(_) => 0,
         Expr::Boolean(_) => 0,
@@ -35,6 +35,13 @@ pub fn depth(e: &Expr) -> u64 {
         Expr::Define(_, e) => depth(e),
         Expr::FnDefn(_, v, b) => depth(b) + v.len() as u64,
         Expr::FnCall(_, args) => args.len() as u64,
+    };
+    // 16byte/128bit aligned -> d multiple of 2
+    let align = 16 / 8;
+    if d % align != 0 {
+        d + d % align
+    } else {
+        d
     }
 }
 
@@ -498,15 +505,19 @@ pub fn compile_expr(e: &Expr, co: &Context, com: &mut ContextMut) -> Vec<Instr> 
 
             for (i, arg) in args.iter().enumerate() {
                 // Result in main's stack
-                instrs.extend(compile_expr(arg, &co.modify(
-                    Some(co.si+i as i32),
-                    None,
-                    None,
-                    Some(Some(MemRef {
-                        reg: Rsp,
-                        offset: co.si + i as i32,
-                    }))
-                ), com));
+                instrs.extend(compile_expr(
+                    arg,
+                    &co.modify(
+                        Some(co.si + i as i32),
+                        None,
+                        None,
+                        Some(Some(MemRef {
+                            reg: Rsp,
+                            offset: co.si + i as i32,
+                        })),
+                    ),
+                    com,
+                ));
             }
             // Move result from main's stack to the callee's stack layout
             for i in 0..args.len() as i32 {
