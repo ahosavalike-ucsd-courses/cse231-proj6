@@ -1,1 +1,2 @@
 (let ((x false)) (isbool x))
+; (output true)

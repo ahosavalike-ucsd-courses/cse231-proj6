@@ -2,3 +2,6 @@
     (block
         (set! x input)
         (> x 20)))
+; ((input 25) (output true))
+; ((input 20) (output false))
+; ((input true) (dynamic "invalid argument"))

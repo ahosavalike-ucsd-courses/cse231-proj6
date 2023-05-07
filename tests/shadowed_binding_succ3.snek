@@ -1,1 +1,2 @@
 (let ((x 5)) (let ((x x)) x))
+; (output 5)

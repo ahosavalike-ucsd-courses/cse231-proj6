@@ -8,3 +8,6 @@
                     (set! acc (* acc i))
                     (set! i (+ i 1)))))
         (if (= acc 120) (+ 5 true) acc)))
+; ((input 3) (output 6))
+; ((input 7) (output 5040))
+; ((input 5) (dynamic "invalid argument"))

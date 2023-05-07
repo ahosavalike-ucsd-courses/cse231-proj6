@@ -1,1 +1,2 @@
 (if input 20 (break 5))
+; (static break)

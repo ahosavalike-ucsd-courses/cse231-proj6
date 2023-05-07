@@ -1,1 +1,4 @@
 (isnum input)
+; (output false)
+; ((input 547) (output true))
+; ((input true) (output false))

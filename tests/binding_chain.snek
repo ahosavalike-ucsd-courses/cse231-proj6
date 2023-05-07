@@ -1,1 +1,2 @@
 (let ((x 1) (y (add1 x)) (z (add1 y))) z)
+; (output 3)

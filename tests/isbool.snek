@@ -1,1 +1,3 @@
 (isbool input)
+; (output true)
+; ((input 689) (output false))

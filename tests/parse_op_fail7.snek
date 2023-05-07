@@ -1,1 +1,2 @@
 (isnum 7 8)
+; (static "Invalid")

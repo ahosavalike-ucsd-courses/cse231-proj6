@@ -1,1 +1,2 @@
 (let ((x 20)) (set! x true))
+; (output true)

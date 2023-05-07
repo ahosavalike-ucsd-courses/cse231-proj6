@@ -1,1 +1,4 @@
 input
+; (output false)
+; ((input true) (output true))
+; ((input 123) (output 123))

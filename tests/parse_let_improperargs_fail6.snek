@@ -1,1 +1,2 @@
 (let ((loop 5)) 20)
+; (static keyword)

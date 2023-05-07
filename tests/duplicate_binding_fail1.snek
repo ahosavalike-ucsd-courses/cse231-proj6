@@ -1,1 +1,2 @@
 (* 100 (let ((x 3) (y 5) (x 4)) (+ x y)))
+; (static "Duplicate binding")

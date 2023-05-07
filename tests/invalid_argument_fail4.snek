@@ -1,1 +1,2 @@
 (let ((x true) (y 5)) (- y x))
+; (dynamic "invalid argument")

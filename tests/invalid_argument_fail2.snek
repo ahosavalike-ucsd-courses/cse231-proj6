@@ -1,1 +1,2 @@
 (sub1 (sub1 (add1 (add1 (sub1 (sub1 (add1 (* 1 (* 1 true)))))))))
+; (dynamic "invalid argument")

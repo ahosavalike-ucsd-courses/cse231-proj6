@@ -1,1 +1,2 @@
 (+ (let ((x 40)) x) x)
+; (static "Unbound variable identifier x")
