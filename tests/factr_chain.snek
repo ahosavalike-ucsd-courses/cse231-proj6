@@ -1,0 +1,6 @@
+(fun (facte n) (if (<= n 1) 1 (* n (facto (sub1 n)))))
+(fun (facto n) (if (<= n 1) 1 (* n (facte (- n 1)))))
+(let ((x input)) (+ (facto x) (facte x)))
+; (dynamic "invalid argument")
+; ((input 5) (output 240))
+; ((input 20) (dynamic overflow))

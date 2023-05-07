@@ -1,0 +1,12 @@
+(fun (add x y) (+ x y))
+(add 
+    (print (add 
+        (add 4 5) ; 9
+        6
+    )) ; 15
+    (print (add 
+        (add 4 5) ; 9
+        6
+    )) ; 15
+) ; 30
+; (output 15 15 30)

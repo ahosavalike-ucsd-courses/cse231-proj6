@@ -145,6 +145,12 @@ success_tests! {
 		expected: "6",
 	},
 	{
+		name: factr_chain_4,
+		file: "factr_chain.snek",
+		input: "5",
+		expected: "240",
+	},
+	{
 		name: shadowed_binding_succ5_1,
 		file: "shadowed_binding_succ5.snek",
 		expected: "5",
@@ -166,6 +172,11 @@ success_tests! {
 		file: "if_expr_input.snek",
 		input: "635",
 		expected: "20",
+	},
+	{
+		name: func_nested_call_11,
+		file: "func_nested_call.snek",
+		expected: "15\n15\n30",
 	},
 	{
 		name: isbool_1,
@@ -536,6 +547,17 @@ runtime_error_tests! {
 		name: invalid_argument_fail4_1,
 		file: "invalid_argument_fail4.snek",
 		expected: "invalid argument",
+	},
+	{
+		name: factr_chain_3,
+		file: "factr_chain.snek",
+		expected: "invalid argument",
+	},
+	{
+		name: factr_chain_5,
+		file: "factr_chain.snek",
+		input: "20",
+		expected: "overflow",
 	},
 	{
 		name: if_expr_input_2,
