@@ -540,7 +540,7 @@ pub fn compile_expr(e: &Expr, co: &Context, com: &mut ContextMut) -> Vec<Instr> 
             co.rax_to_target(&mut instrs);
         }
         Expr::Define(_, _) => panic!("define cannot be compiled"),
-        Expr::FnDefn(_, _, _) => panic!("fn defn cannot be compiled here"),
+        Expr::FnDefn(_, _, _) => panic!("Invalid: fn defn cannot be compiled here"),
     }
     return instrs;
 }
