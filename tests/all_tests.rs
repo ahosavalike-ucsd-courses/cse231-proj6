@@ -216,6 +216,11 @@ success_tests! {
 		expected: "3",
 	},
 	{
+		name: func_no_args_2,
+		file: "func_no_args.snek",
+		expected: "5\n5",
+	},
+	{
 		name: binding_nested_chain_1,
 		file: "binding_nested_chain.snek",
 		expected: "12",
