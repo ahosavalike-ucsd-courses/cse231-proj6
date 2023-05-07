@@ -1,0 +1,4 @@
+(fun (fact n) (if (<= n 1) 1 (* n (fact (sub1 n)))))
+(let ((fact (if (isbool input) 5 input))) (fact fact))
+; (output 5)
+; ((input 20) (output 2432902008176640000))
