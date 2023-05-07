@@ -156,6 +156,11 @@ success_tests! {
 		expected: "5",
 	},
 	{
+		name: func_many_args_3,
+		file: "func_many_args.snek",
+		expected: "15\n22\n351\n351",
+	},
+	{
 		name: even_odd_19,
 		file: "even_odd.snek",
 		input: "10",

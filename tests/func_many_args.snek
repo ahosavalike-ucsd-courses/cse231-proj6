@@ -1,3 +1,4 @@
 (fun (a b) b)
 (fun (long a b c d e f g h i j k l m n o p q r s t u v w x y z) (+ a (+ b (+ c (+ d (+ e (+ f (+ g (+ h (+ i (+ j (+ k (+ l (+ m (+ n (+ o (+ p (+ q (+ r (+ s (+ t (+ u (+ v (+ w (+ x (+ y z))))))))))))))))))))))))))
-(print (long 1 2 3 4 (a 5) 6 7 8 9 (a 10) 11 12 13 14 15 16 (a 17) 18 19 20 21 22 23 24 25 26))
+(print (long 1 2 3 4 (a 5) 6 7 8 9 (a 10) 11 12 13 14 (print (a 15)) 16 (a 17) 18 19 20 21 (a (print 22)) 23 24 25 26))
+; (output 15 22 351 351)
