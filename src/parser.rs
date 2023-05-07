@@ -2,11 +2,10 @@ use crate::structs::*;
 use sexp::Atom::*;
 use sexp::*;
 
-pub fn parse_top_level(s: &Sexp) -> Expr {
+pub fn parse_top_level(s: &Sexp) -> (Vec<Expr>, Expr) {
     if let Sexp::List(v) = s {
-        if let [_fns @ .., expr] = &v[..] {
-            // TODO: parse each fns
-            return parse_expr(expr);
+        if let [fns @ .., expr] = &v[..] {
+            return (fns.iter().map(parse_expr).collect(), parse_expr(expr));
         }
     }
     panic!("Invalid")
@@ -15,7 +14,7 @@ pub fn parse_top_level(s: &Sexp) -> Expr {
 pub fn parse_expr(s: &Sexp) -> Expr {
     let keywords = &vec![
         "add1", "sub1", "let", "isnum", "isbool", "if", "loop", "break", "set!", "block", "input",
-        "print",
+        "print", "fun", "+", "-", "*", "<", ">", ">=", "<=", "=",
     ];
     match s {
         // Num
@@ -28,6 +27,10 @@ pub fn parse_expr(s: &Sexp) -> Expr {
         },
         // List of tokens
         Sexp::List(vec) => match &vec[..] {
+            // Func calls
+            [Sexp::Atom(S(f)), args @ ..] if !keywords.contains(&f.as_str()) => {
+                Expr::FnCall(f.to_string(), args.iter().map(parse_expr).collect())
+            }
             // Block
             [Sexp::Atom(S(op)), es @ ..] if op == "block" => {
                 if es.len() == 0 {
@@ -38,6 +41,29 @@ pub fn parse_expr(s: &Sexp) -> Expr {
             // Define
             [Sexp::Atom(S(op)), Sexp::Atom(S(x)), e] if op == "define" => {
                 Expr::Define(x.to_string(), Box::new(parse_expr(e)))
+            }
+            // Function defn
+            [Sexp::Atom(S(op)), Sexp::List(v), b] if op == "fun" => {
+                if let [Sexp::Atom(S(name)), vars @ ..] = &v[..] {
+                    Expr::FnDefn(
+                        name.to_string(),
+                        vars.iter()
+                            .map(|v| {
+                                if let Sexp::Atom(S(vn)) = v {
+                                    if keywords.contains(&vn.as_str()) {
+                                        panic!("keyword cannot be used")
+                                    }
+                                    vn.to_string()
+                                } else {
+                                    panic!("Invalid")
+                                }
+                            })
+                            .collect(),
+                        Box::new(parse_expr(b)),
+                    )
+                } else {
+                    panic!("Invalid");
+                }
             }
             [Sexp::Atom(S(op)), e] => match op.as_str() {
                 // Loop

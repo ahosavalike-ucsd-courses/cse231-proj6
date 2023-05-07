@@ -40,6 +40,8 @@ pub enum Expr {
     Break(Box<Expr>),
     Set(String, Box<Expr>),
     Block(Vec<Expr>),
+    FnDefn(String, Vec<String>, Box<Expr>),
+    FnCall(String, Vec<Expr>),
 }
 
 // Compiler
@@ -99,6 +101,7 @@ pub struct ContextMut {
     pub env: HashMap<String, VarEnv>,
     pub label_index: i32,
     pub result_is_bool: Option<bool>,
+    pub fns: HashMap<String, u8>,
 }
 
 impl ContextMut {
@@ -107,6 +110,7 @@ impl ContextMut {
             env: hashmap! {},
             label_index: 0,
             result_is_bool: None,
+            fns: hashmap! {},
         }
     }
     pub fn index_used(&mut self) {
@@ -436,6 +440,7 @@ pub enum Instr {
     LabelI(Label),
     JumpI(Jump),
     Call(Label),
+    Ret,
 }
 use Instr::*;
 
@@ -457,6 +462,7 @@ impl fmt::Display for Instr {
             Xor(r, a) => write!(f, "xor {r}, {a}"),
             Sar(r, i) => write!(f, "sar {r}, {i}"),
             Call(l) => write!(f, "call {l}"),
+            Ret => write!(f, "ret"),
         }
     }
 }
@@ -609,6 +615,7 @@ impl Instr {
             LabelI(l) => dynasm!(ops; .arch x64; =>*lbls.get(l).unwrap()),
             JumpI(j) => j.asm(ops, lbls),
             Call(l) => dynasm!(ops; .arch x64; call =>*lbls.get(l).unwrap()),
+            Ret => dynasm!(ops; .arch x64; ret),
         }
     }
 }

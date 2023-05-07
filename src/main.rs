@@ -27,7 +27,7 @@ fn main() -> std::io::Result<()> {
     let mut in_contents = String::new();
     in_file.read_to_string(&mut in_contents)?;
 
-    let expr =
+    let (funcs, expr) =
         parse_top_level(&parse(&format!("(\n{in_contents}\n)").to_string()).expect("Invalid"));
 
     if args[1] == "-e" {
@@ -37,17 +37,25 @@ fn main() -> std::io::Result<()> {
         ))));
     }
 
-    let result = compile_expr_with_unknown_input(&expr, &Context::new(None));
+    let com = &mut ContextMut::new();
+    let funcs = compile_func_defns(&funcs, com);
+    let result = compile_expr_with_unknown_input(&expr, com);
 
     let asm_program = format!(
         "section .text
 extern snek_error
 extern snek_print
 global our_code_starts_here
+
+; Function Definitions
+{}
+
+; Main code
 our_code_starts_here:
 {}
 ret
 ",
+        instrs_to_string(&funcs),
         instrs_to_string(&result)
     );
 

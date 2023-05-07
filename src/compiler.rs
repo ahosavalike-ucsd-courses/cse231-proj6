@@ -34,11 +34,43 @@ pub fn depth(e: &Expr) -> u64 {
         Expr::Set(_, e) => depth(e),
         Expr::Define(_, e) => depth(e),
         Expr::FnDefn(_, v, b) => depth(b) + v.len() as u64,
+        Expr::FnCall(_, _) => 0,
     }
 }
 
-pub fn compile_expr_with_unknown_input(e: &Expr, co: &Context) -> Vec<Instr> {
-    let com = &mut ContextMut::new();
+pub fn compile_func_defns(fns: &Vec<Expr>, com: &mut ContextMut) -> Vec<Instr> {
+    let mut instrs: Vec<Instr> = vec![];
+    let mut co = Context::new(None);
+
+    for f in fns {
+        if let Expr::FnDefn(name, vars, body) = f {
+            if com.fns.get(name).is_some() {
+                panic!("function redefined")
+            }
+
+            com.fns.insert(name.to_string(), vars.len() as u8);
+            let vlen = vars.len() as i32;
+            let dep = depth(body) as i32 + vlen;
+
+            for (i, v) in vars.iter().enumerate() {
+                co.env
+                    .insert(v.to_string(), VarEnv::new(dep - 1 - i as i32, None, false));
+            }
+
+            instrs.push(LabelI(Label::new(Some(name))));
+            instrs.push(Sub(ToReg(Rsp, Imm(dep * 8))));
+            instrs.extend(compile_expr(body, &co, com));
+            instrs.push(Add(ToReg(Rsp, Imm(dep * 8))));
+            instrs.push(Ret);
+        } else {
+            panic!("cannot compile anything other than function definitions here")
+        }
+    }
+    return instrs;
+}
+
+pub fn compile_expr_with_unknown_input(e: &Expr, com: &mut ContextMut) -> Vec<Instr> {
+    let co = Context::new(None);
     let dep = depth(e) as i32 + 2; // 1 extra for input
     let mut instrs: Vec<Instr> = vec![
         Sub(ToReg(Rsp, Imm(dep * 8))),
@@ -441,7 +473,30 @@ pub fn compile_expr(e: &Expr, co: &Context, com: &mut ContextMut) -> Vec<Instr> 
                 instrs.push(JumpI(Jump::U(co.label.clone())));
             }
         }
+        Expr::FnCall(name, args) => {
+            if *com
+                .fns
+                .get(name)
+                .expect(format!("Invalid: undefined function {name}").as_str())
+                != args.len() as u8
+            {
+                panic!("Invalid: mismatched argument count");
+            }
+            for (i, arg) in args.iter().enumerate() {
+                instrs.extend(compile_expr(
+                    arg,
+                    &co.modify_target(Some(MemRef {
+                        reg: Rsp,
+                        offset: -(2 + i as i32),
+                    })),
+                    com,
+                ))
+            }
+            instrs.push(Call(Label::new(Some(name))));
+            co.rax_to_target(&mut instrs);
+        }
         Expr::Define(_, _) => panic!("define cannot be compiled"),
+        Expr::FnDefn(_, _, _) => panic!("fn defn cannot be compiled here"),
     }
     return instrs;
 }
