@@ -50,7 +50,7 @@ pub fn compile_func_defns(fns: &Vec<Expr>, com: &mut ContextMut) -> Vec<Instr> {
             acc.insert(n.to_string(), v.len() as u8);
             acc
         } else {
-            panic!("cannot compile anything other than function definitions here")
+            panic!("Invalid: cannot compile anything other than function definitions here")
         }
     }));
 
