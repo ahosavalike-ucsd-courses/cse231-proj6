@@ -40,19 +40,34 @@ pub fn depth(e: &Expr) -> u64 {
 
 pub fn compile_func_defns(fns: &Vec<Expr>, com: &mut ContextMut) -> Vec<Instr> {
     let mut instrs: Vec<Instr> = vec![];
-    let mut co = Context::new(None);
 
-    for f in fns {
-        if let Expr::FnDefn(name, vars, body) = f {
-            if com.fns.get(name).is_some() {
+    // Preprocess all function definitions
+    com.fns.extend(fns.iter().fold(hashmap! {}, |mut acc, f| {
+        if let Expr::FnDefn(n, v, _) = f {
+            if acc.get(n).is_some() {
                 panic!("function redefined")
             }
+            acc.insert(n.to_string(), v.len() as u8);
+            acc
+        } else {
+            panic!("cannot compile anything other than function definitions here")
+        }
+    }));
 
-            com.fns.insert(name.to_string(), vars.len() as u8);
+    for f in fns {
+        // Separate context for each function definiton
+        let mut co = Context::new(None);
+
+        // No else block as we checked and paniced in preprocessing
+        if let Expr::FnDefn(name, vars, body) = f {
             let vlen = vars.len() as i32;
             let dep = depth(body) as i32 + vlen;
 
             for (i, v) in vars.iter().enumerate() {
+                let existing = co.env.get(v.as_str());
+                if existing.is_some() && !existing.unwrap().in_heap {
+                    panic!("duplicate parameter binding in definition");
+                }
                 co.env
                     .insert(v.to_string(), VarEnv::new(dep - 1 - i as i32, None, false));
             }
@@ -62,8 +77,6 @@ pub fn compile_func_defns(fns: &Vec<Expr>, com: &mut ContextMut) -> Vec<Instr> {
             instrs.extend(compile_expr(body, &co, com));
             instrs.push(Add(ToReg(Rsp, Imm(dep * 8))));
             instrs.push(Ret);
-        } else {
-            panic!("cannot compile anything other than function definitions here")
         }
     }
     return instrs;
