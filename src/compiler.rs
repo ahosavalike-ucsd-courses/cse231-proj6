@@ -34,7 +34,7 @@ pub fn depth(e: &Expr) -> u64 {
         Expr::Set(_, e) => depth(e),
         Expr::Define(_, e) => depth(e),
         Expr::FnDefn(_, v, b) => depth(b) + v.len() as u64,
-        Expr::FnCall(_, _) => 0,
+        Expr::FnCall(_, args) => args.len() as u64 - 1,
     }
 }
 
@@ -495,15 +495,35 @@ pub fn compile_expr(e: &Expr, co: &Context, com: &mut ContextMut) -> Vec<Instr> 
             {
                 panic!("Invalid: mismatched argument count");
             }
+
             for (i, arg) in args.iter().enumerate() {
-                instrs.extend(compile_expr(
-                    arg,
-                    &co.modify_target(Some(MemRef {
+                // Result in main's stack
+                instrs.extend(compile_expr(arg, &co.modify(
+                    Some(co.si+i as i32),
+                    None,
+                    None,
+                    Some(Some(MemRef {
                         reg: Rsp,
-                        offset: -(2 + i as i32),
-                    })),
-                    com,
-                ))
+                        offset: co.si + i as i32,
+                    }))
+                ), com));
+            }
+            // Move result from main's stack to the callee's stack layout
+            for i in 0..args.len() as i32 {
+                instrs.push(Mov(ToReg(
+                    Rax,
+                    Mem(MemRef {
+                        reg: Rsp,
+                        offset: co.si + i,
+                    }),
+                )));
+                instrs.push(Mov(ToMem(
+                    MemRef {
+                        reg: Rsp,
+                        offset: -(2 + i),
+                    },
+                    OReg(Rax),
+                )));
             }
             instrs.push(Call(Label::new(Some(name))));
             co.rax_to_target(&mut instrs);
