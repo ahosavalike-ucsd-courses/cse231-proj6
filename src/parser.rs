@@ -5,7 +5,19 @@ use sexp::*;
 pub fn parse_top_level(s: &Sexp) -> (Vec<Expr>, Expr) {
     if let Sexp::List(v) = s {
         if let [fns @ .., expr] = &v[..] {
-            return (fns.iter().map(parse_expr).collect(), parse_expr(expr));
+            return (
+                fns.iter()
+                    .map(parse_expr)
+                    .map(|f| {
+                        if let Expr::FnDefn(_, _, _) = f {
+                            f
+                        } else {
+                            panic!("Invalid: only function definitions allowed here")
+                        }
+                    })
+                    .collect(),
+                parse_expr(expr),
+            );
         }
     }
     panic!("Invalid")

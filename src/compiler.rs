@@ -55,10 +55,10 @@ pub fn compile_func_defns(fns: &Vec<Expr>, com: &mut ContextMut) -> Vec<Instr> {
                 panic!("function redefined")
             }
             acc.insert(n.to_string(), v.len() as u8);
-            acc
-        } else {
-            panic!("Invalid: cannot compile anything other than function definitions here")
+            return acc;
         }
+        // Should not happen, since we are catching it in parse
+        panic!("Invalid: cannot compile anything other than function definitions here")
     }));
 
     for f in fns {
