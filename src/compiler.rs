@@ -34,7 +34,7 @@ pub fn depth(e: &Expr) -> u64 {
         Expr::Set(_, e) => depth(e),
         Expr::Define(_, e) => depth(e),
         Expr::FnDefn(_, v, b) => depth(b) + v.len() as u64,
-        Expr::FnCall(_, args) => args.len() as u64 - 1,
+        Expr::FnCall(_, args) => args.len() as u64,
     }
 }
 
