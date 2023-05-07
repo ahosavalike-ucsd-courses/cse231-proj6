@@ -72,7 +72,7 @@ pub fn compile_func_defns(fns: &Vec<Expr>, com: &mut ContextMut) -> Vec<Instr> {
                     .insert(v.to_string(), VarEnv::new(dep - 1 - i as i32, None, false));
             }
 
-            instrs.push(LabelI(Label::new(Some(name))));
+            instrs.push(LabelI(Label::new(Some(format!("fun_{name}").as_str()))));
             instrs.push(Sub(ToReg(Rsp, Imm(dep * 8))));
             instrs.extend(compile_expr(body, &co, com));
             instrs.push(Add(ToReg(Rsp, Imm(dep * 8))));
@@ -525,7 +525,7 @@ pub fn compile_expr(e: &Expr, co: &Context, com: &mut ContextMut) -> Vec<Instr> 
                     OReg(Rax),
                 )));
             }
-            instrs.push(Call(Label::new(Some(name))));
+            instrs.push(Call(Label::new(Some(format!("fun_{name}").as_str()))));
             co.rax_to_target(&mut instrs);
         }
         Expr::Define(_, _) => panic!("define cannot be compiled"),
