@@ -38,9 +38,9 @@ pub fn depth(e: &Expr) -> u64 {
     };
     // 16byte/128bit aligned -> d multiple of 2
     if d % 2 != 0 {
-        d + 1
+        d
     } else {
-        d 
+        d + 1 
     }
 }
 
@@ -90,7 +90,7 @@ pub fn compile_func_defns(fns: &Vec<Expr>, com: &mut ContextMut) -> Vec<Instr> {
 
 pub fn compile_expr_with_unknown_input(e: &Expr, com: &mut ContextMut) -> Vec<Instr> {
     let co = Context::new(None);
-    let dep = depth(e) as i32 + 1; // 1 extra for input
+    let dep = depth(e) as i32 + 2; // 1 extra for input
     let mut instrs: Vec<Instr> = vec![
         Sub(ToReg(Rsp, Imm(dep * 8))),
         Mov(ToMem(
