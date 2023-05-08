@@ -503,7 +503,6 @@ pub fn compile_expr(e: &Expr, co: &Context, com: &mut ContextMut) -> Vec<Instr> 
                 .get(name)
                 .expect(&format!("Invalid: undefined function {name}"))
                 .clone();
-            println!("{fenv:?}");
             if fenv.argc != args.len() as i32 {
                 panic!("Invalid: mismatched argument count");
             }
