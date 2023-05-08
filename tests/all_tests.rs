@@ -103,6 +103,11 @@ success_tests! {
 		expected: "3628800",
 	},
 	{
+		name: func_fib_2,
+		file: "func_fib.snek",
+		expected: "55",
+	},
+	{
 		name: binding1_1,
 		file: "binding1.snek",
 		expected: "-5",
