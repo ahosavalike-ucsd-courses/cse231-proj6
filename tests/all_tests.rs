@@ -118,6 +118,11 @@ success_tests! {
 		expected: "5",
 	},
 	{
+		name: func_f1_2,
+		file: "func_f1.snek",
+		expected: "1\n1",
+	},
+	{
 		name: compare_expr_succ2_1,
 		file: "compare_expr_succ2.snek",
 		expected: "true",
@@ -176,6 +181,11 @@ success_tests! {
 		file: "even_odd.snek",
 		input: "9",
 		expected: "9\nfalse\nfalse",
+	},
+	{
+		name: func_f2_2,
+		file: "func_f2.snek",
+		expected: "1\n1",
 	},
 	{
 		name: if_expr_input_1,
