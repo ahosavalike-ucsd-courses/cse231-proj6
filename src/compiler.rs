@@ -53,11 +53,14 @@ pub fn compile_func_defns(fns: &Vec<Expr>, com: &mut ContextMut) -> Vec<Instr> {
 
     // Preprocess all function definitions
     com.fns.extend(fns.iter().fold(hashmap! {}, |mut acc, f| {
-        if let Expr::FnDefn(n, v, _) = f {
+        if let Expr::FnDefn(n, v, b) = f {
             if acc.get(n).is_some() {
                 panic!("function redefined")
             }
-            acc.insert(n.to_string(), FunEnv::new(v.len() as i32));
+            acc.insert(
+                n.to_string(),
+                FunEnv::new(v.len() as i32, depth_aligned(b, v.len() as i32)),
+            );
             return acc;
         }
         // Should not happen, since we are catching it in parse
@@ -65,13 +68,11 @@ pub fn compile_func_defns(fns: &Vec<Expr>, com: &mut ContextMut) -> Vec<Instr> {
     }));
 
     for f in fns {
-        // Separate context for each function definiton
-        let mut co = Context::new(None);
-
         // No else block as we checked and paniced in preprocessing
         if let Expr::FnDefn(name, vars, body) = f {
-            let dep = depth_aligned(body, vars.len() as i32);
-            com.fns.get_mut(name).unwrap().depth = dep;
+            let dep = com.fns.get_mut(name).unwrap().depth;
+            // Separate context for each function definiton
+            let mut co = Context::new(None).modify_si(vars.len() as i32);
 
             for (i, v) in vars.iter().enumerate() {
                 let existing = co.env.get(v.as_str());
@@ -79,7 +80,7 @@ pub fn compile_func_defns(fns: &Vec<Expr>, com: &mut ContextMut) -> Vec<Instr> {
                     panic!("duplicate parameter binding in definition");
                 }
                 co.env
-                    .insert(v.to_string(), VarEnv::new(dep - 1 - i as i32, None, false));
+                    .insert(v.to_string(), VarEnv::new(i as i32, None, false));
             }
 
             instrs.push(LabelI(Label::new(Some(&format!("fun_{name}")))));
@@ -93,14 +94,14 @@ pub fn compile_func_defns(fns: &Vec<Expr>, com: &mut ContextMut) -> Vec<Instr> {
 }
 
 pub fn compile_expr_with_unknown_input(e: &Expr, com: &mut ContextMut) -> Vec<Instr> {
-    let co = Context::new(None);
-    let dep = depth_aligned(e, 1); // 1 extra for input
+    let co = Context::new(None).modify_si(1);
+    let dep = depth_aligned(e, 3); // 1 extra for input
     let mut instrs: Vec<Instr> = vec![
         Sub(ToReg(Rsp, Imm(dep * 8))),
         Mov(ToMem(
             MemRef {
                 reg: Rsp,
-                offset: dep - 2,
+                offset: 0,
             },
             OReg(Rdi),
         )),
@@ -111,7 +112,7 @@ pub fn compile_expr_with_unknown_input(e: &Expr, com: &mut ContextMut) -> Vec<In
             None,
             Some(
                 co.env
-                    .update("input".to_string(), VarEnv::new(dep - 2, None, false)),
+                    .update("input".to_string(), VarEnv::new(0, None, false)),
             ),
             None,
             None,
@@ -497,13 +498,13 @@ pub fn compile_expr(e: &Expr, co: &Context, com: &mut ContextMut) -> Vec<Instr> 
             }
         }
         Expr::FnCall(name, args) => {
-            if com
+            let fenv = com
                 .fns
                 .get(name)
                 .expect(&format!("Invalid: undefined function {name}"))
-                .argc
-                != args.len() as i32
-            {
+                .clone();
+            println!("{fenv:?}");
+            if fenv.argc != args.len() as i32 {
                 panic!("Invalid: mismatched argument count");
             }
 
@@ -535,7 +536,7 @@ pub fn compile_expr(e: &Expr, co: &Context, com: &mut ContextMut) -> Vec<Instr> 
                 instrs.push(Mov(ToMem(
                     MemRef {
                         reg: Rsp,
-                        offset: -(2 + i),
+                        offset: -(fenv.depth + 1) + i,
                     },
                     OReg(Rax),
                 )));

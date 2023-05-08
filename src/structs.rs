@@ -103,10 +103,10 @@ pub struct FunEnv {
 }
 
 impl FunEnv {
-    pub fn new(argc: i32) -> FunEnv {
+    pub fn new(argc: i32, depth: i32) -> FunEnv {
         FunEnv {
             argc,
-            depth: 0,
+            depth,
         }
     }
 }
@@ -184,6 +184,16 @@ impl Context {
             env: env.unwrap_or(self.env.clone()),
             label: label.unwrap_or(self.label.clone()),
             target: target.unwrap_or(self.target.clone()),
+        }
+    }
+    pub fn modify_si(&self, si: i32) -> Context {
+        Context {
+            si,
+            heap: self.heap,
+            hi: self.hi,
+            env: self.env.clone(),
+            label: self.label.clone(),
+            target: self.target.clone(),
         }
     }
     pub fn modify_env(&self, env: HashMap<String, VarEnv>) -> Context {
