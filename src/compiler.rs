@@ -12,8 +12,8 @@ use im::HashMap;
 const TRUE: Arg64 = Imm(3);
 const FALSE: Arg64 = Imm(1);
 
-pub fn depth(e: &Expr) -> u64 {
-    let d = match e {
+pub fn depth(e: &Expr) -> i32 {
+    match e {
         Expr::Num(_) => 0,
         Expr::Var(_) => 0,
         Expr::Boolean(_) => 0,
@@ -23,24 +23,28 @@ pub fn depth(e: &Expr) -> u64 {
         Expr::Let(bindings, e) => bindings
             .iter()
             .enumerate()
-            .map(|(i, (_, e))| (i as u64 + depth(e)))
+            .map(|(i, (_, e))| (i as i32 + depth(e)))
             .max()
             .unwrap_or(0)
-            .max(bindings.len() as u64 + depth(e)),
+            .max(bindings.len() as i32 + depth(e)),
         Expr::If(cond, then, other) => depth(cond).max(depth(then)).max(depth(other)),
         Expr::Loop(e) => depth(e),
         Expr::Block(es) => es.iter().map(|expr| depth(expr)).max().unwrap_or(0),
         Expr::Break(e) => depth(e),
         Expr::Set(_, e) => depth(e),
         Expr::Define(_, e) => depth(e),
-        Expr::FnDefn(_, v, b) => depth(b) + v.len() as u64,
-        Expr::FnCall(_, args) => args.len() as u64,
-    };
-    // 16byte/128bit aligned -> d multiple of 2
+        Expr::FnDefn(_, v, b) => depth_aligned(b, v.len() as i32),
+        Expr::FnCall(_, args) => args.len() as i32,
+    }
+}
+
+fn depth_aligned(e: &Expr, extra: i32) -> i32 {
+    // Off aligned 16byte depth
+    let d = depth(e) + extra;
     if d % 2 != 0 {
         d
     } else {
-        d + 1 
+        d + 1
     }
 }
 
@@ -53,7 +57,7 @@ pub fn compile_func_defns(fns: &Vec<Expr>, com: &mut ContextMut) -> Vec<Instr> {
             if acc.get(n).is_some() {
                 panic!("function redefined")
             }
-            acc.insert(n.to_string(), v.len() as u8);
+            acc.insert(n.to_string(), FunEnv::new(v.len() as i32));
             return acc;
         }
         // Should not happen, since we are catching it in parse
@@ -66,8 +70,8 @@ pub fn compile_func_defns(fns: &Vec<Expr>, com: &mut ContextMut) -> Vec<Instr> {
 
         // No else block as we checked and paniced in preprocessing
         if let Expr::FnDefn(name, vars, body) = f {
-            let vlen = vars.len() as i32;
-            let dep = depth(body) as i32 + vlen;
+            let dep = depth_aligned(body, vars.len() as i32);
+            com.fns.get_mut(name).unwrap().depth = dep;
 
             for (i, v) in vars.iter().enumerate() {
                 let existing = co.env.get(v.as_str());
@@ -90,7 +94,7 @@ pub fn compile_func_defns(fns: &Vec<Expr>, com: &mut ContextMut) -> Vec<Instr> {
 
 pub fn compile_expr_with_unknown_input(e: &Expr, com: &mut ContextMut) -> Vec<Instr> {
     let co = Context::new(None);
-    let dep = depth(e) as i32 + 2; // 1 extra for input
+    let dep = depth_aligned(e, 1); // 1 extra for input
     let mut instrs: Vec<Instr> = vec![
         Sub(ToReg(Rsp, Imm(dep * 8))),
         Mov(ToMem(
@@ -493,11 +497,12 @@ pub fn compile_expr(e: &Expr, co: &Context, com: &mut ContextMut) -> Vec<Instr> 
             }
         }
         Expr::FnCall(name, args) => {
-            if *com
+            if com
                 .fns
                 .get(name)
                 .expect(&format!("Invalid: undefined function {name}"))
-                != args.len() as u8
+                .argc
+                != args.len() as i32
             {
                 panic!("Invalid: mismatched argument count");
             }

@@ -97,11 +97,26 @@ impl VarEnv {
 }
 
 #[derive(Clone, Debug)]
+pub struct FunEnv {
+    pub argc: i32,
+    pub depth: i32,
+}
+
+impl FunEnv {
+    pub fn new(argc: i32) -> FunEnv {
+        FunEnv {
+            argc,
+            depth: 0,
+        }
+    }
+}
+
+#[derive(Clone, Debug)]
 pub struct ContextMut {
     pub env: HashMap<String, VarEnv>,
     pub label_index: i32,
     pub result_is_bool: Option<bool>,
-    pub fns: HashMap<String, u8>,
+    pub fns: HashMap<String, FunEnv>,
 }
 
 impl ContextMut {
