@@ -46,6 +46,9 @@ fn main() -> std::io::Result<()> {
 extern snek_error
 extern snek_print
 global our_code_starts_here
+snek_error_stub:
+ call snek_error
+ ret
 
 ; Function Definitions
 {}

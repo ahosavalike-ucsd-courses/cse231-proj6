@@ -37,11 +37,10 @@ pub fn depth(e: &Expr) -> u64 {
         Expr::FnCall(_, args) => args.len() as u64,
     };
     // 16byte/128bit aligned -> d multiple of 2
-    let align = 16 / 8;
-    if d % align != 0 {
-        d + d % align
+    if d % 2 != 0 {
+        d + 1
     } else {
-        d
+        d 
     }
 }
 
@@ -91,7 +90,7 @@ pub fn compile_func_defns(fns: &Vec<Expr>, com: &mut ContextMut) -> Vec<Instr> {
 
 pub fn compile_expr_with_unknown_input(e: &Expr, com: &mut ContextMut) -> Vec<Instr> {
     let co = Context::new(None);
-    let dep = depth(e) as i32 + 2; // 1 extra for input
+    let dep = depth(e) as i32 + 1; // 1 extra for input
     let mut instrs: Vec<Instr> = vec![
         Sub(ToReg(Rsp, Imm(dep * 8))),
         Mov(ToMem(
@@ -121,7 +120,7 @@ pub fn compile_expr_with_unknown_input(e: &Expr, com: &mut ContextMut) -> Vec<In
 
 pub fn compile_expr(e: &Expr, co: &Context, com: &mut ContextMut) -> Vec<Instr> {
     let mut instrs: Vec<Instr> = vec![];
-    let snek_error: Label = Label::new(Some("snek_error"));
+    let snek_error: Label = Label::new(Some("snek_error_stub"));
 
     match e {
         Expr::Num(n) => {
