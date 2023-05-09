@@ -117,6 +117,7 @@ pub struct ContextMut {
     pub label_index: i32,
     pub result_is_bool: Option<bool>,
     pub fns: HashMap<String, FunEnv>,
+    pub depth: i32,
 }
 
 impl ContextMut {
@@ -126,6 +127,7 @@ impl ContextMut {
             label_index: 0,
             result_is_bool: None,
             fns: hashmap! {},
+            depth: 0,
         }
     }
     pub fn index_used(&mut self) {
@@ -157,6 +159,7 @@ pub struct Context {
     pub env: HashMap<String, VarEnv>,
     pub label: Label,
     pub target: Option<MemRef>,
+    pub tail: bool,
 }
 
 impl Context {
@@ -168,6 +171,7 @@ impl Context {
             env: hashmap! {},
             label: Label::new(None),
             target: None,
+            tail: false,
         }
     }
     pub fn modify(
@@ -176,6 +180,7 @@ impl Context {
         env: Option<HashMap<String, VarEnv>>,
         label: Option<Label>,
         target: Option<Option<MemRef>>,
+        tail: Option<bool>,
     ) -> Context {
         Context {
             si: si.unwrap_or(self.si),
@@ -184,47 +189,33 @@ impl Context {
             env: env.unwrap_or(self.env.clone()),
             label: label.unwrap_or(self.label.clone()),
             target: target.unwrap_or(self.target.clone()),
+            tail: tail.unwrap_or(self.tail),
         }
     }
     pub fn modify_si(&self, si: i32) -> Context {
-        Context {
-            si,
-            heap: self.heap,
-            hi: self.hi,
-            env: self.env.clone(),
-            label: self.label.clone(),
-            target: self.target.clone(),
-        }
+        let mut n = self.clone();
+        n.si = si;
+        n
     }
     pub fn modify_env(&self, env: HashMap<String, VarEnv>) -> Context {
-        Context {
-            si: self.si,
-            heap: self.heap,
-            hi: self.hi,
-            env,
-            label: self.label.clone(),
-            target: self.target.clone(),
-        }
+        let mut n = self.clone();
+        n.env = env;
+        n
     }
     pub fn modify_label(&self, label: Label) -> Context {
-        Context {
-            si: self.si,
-            heap: self.heap,
-            hi: self.hi,
-            env: self.env.clone(),
-            label,
-            target: self.target.clone(),
-        }
+        let mut n = self.clone();
+        n.label = label;
+        n
     }
     pub fn modify_target(&self, target: Option<MemRef>) -> Context {
-        Context {
-            si: self.si,
-            heap: self.heap,
-            hi: self.hi,
-            env: self.env.clone(),
-            label: self.label.clone(),
-            target,
-        }
+        let mut n = self.clone();
+        n.target = target;
+        n
+    }
+    pub fn modify_tail(&self, tail: bool) -> Context {
+        let mut n = self.clone();
+        n.tail = tail;
+        n
     }
     pub fn target_to_reg(&self, dst: Reg) -> Vec<Instr> {
         match &self.target {
