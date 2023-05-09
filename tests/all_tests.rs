@@ -12,6 +12,30 @@ success_tests! {
 		expected: "1",
 	},
 	{
+		name: func_nested_mutual_recursive_tail_3,
+		file: "func_nested_mutual_recursive_tail.snek",
+		input: "1",
+		expected: "243",
+	},
+	{
+		name: func_nested_mutual_recursive_tail_4,
+		file: "func_nested_mutual_recursive_tail.snek",
+		input: "10",
+		expected: "270",
+	},
+	{
+		name: func_nested_mutual_recursive_tail_5,
+		file: "func_nested_mutual_recursive_tail.snek",
+		input: "100",
+		expected: "300",
+	},
+	{
+		name: func_nested_mutual_recursive_tail_6,
+		file: "func_nested_mutual_recursive_tail.snek",
+		input: "200",
+		expected: "200",
+	},
+	{
 		name: shadowed_binding_succ1_1,
 		file: "shadowed_binding_succ1.snek",
 		expected: "7",
