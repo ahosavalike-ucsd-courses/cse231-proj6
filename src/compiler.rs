@@ -544,17 +544,18 @@ pub fn compile_expr(e: &Expr, co: &Context, com: &mut ContextMut) -> Vec<Instr> 
             }
 
             if co.tail {
-                // TODO: Do tail call if co.tail
+                // Do tail call if co.tail is true
                 // Move result from current function's stack to the current function's arguments
                 let diff = com.depth - fenv.depth;
                 // No need to copy if already at the right place
                 if co.si != diff {
                     // Copy top to bottom or bottom to top depending on diff and co.si
-                    for i in if co.si > diff {
+                    let rng = if co.si > diff {
                         0..args.len() as i32
                     } else {
                         (args.len() as i32 - 1)..-1
-                    } {
+                    };
+                    for i in rng {
                         instrs.push(Mov(ToReg(
                             Rax,
                             Mem(MemRef {
@@ -574,6 +575,7 @@ pub fn compile_expr(e: &Expr, co: &Context, com: &mut ContextMut) -> Vec<Instr> 
                 // Bring RSP to ret ptr
                 instrs.push(Add(ToReg(Rsp, Imm(com.depth * 8))));
                 instrs.push(JumpI(Jump::U(Label::new(Some(&format!("fun_{name}"))))))
+                // Already in tail position, no need to move to target
             } else {
                 // Move result from current function's stack to the callee's stack layout
                 for i in 0..args.len() as i32 {
