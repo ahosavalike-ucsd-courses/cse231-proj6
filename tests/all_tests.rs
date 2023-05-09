@@ -231,6 +231,18 @@ success_tests! {
 		expected: "3",
 	},
 	{
+		name: func_fact_tail_3,
+		file: "func_fact_tail.snek",
+		input: "10",
+		expected: "3628800",
+	},
+	{
+		name: func_fact_tail_4,
+		file: "func_fact_tail.snek",
+		input: "20",
+		expected: "2432902008176640000",
+	},
+	{
 		name: func_no_args_2,
 		file: "func_no_args.snek",
 		expected: "5\n5",
