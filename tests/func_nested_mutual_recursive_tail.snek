@@ -1,0 +1,7 @@
+(fun (f a) (g a (* 2 a)))
+(fun (g a b) (if (> a 100) a (f (+ a b))))
+(f input)
+; ((input 1) (output 243))
+; ((input 10) (output 270))
+; ((input 100) (output 300))
+; ((input 200) (output 200))

@@ -1,0 +1,5 @@
+(fun (fact_acc acc n) (if (<= n 1) acc (fact_acc (* acc n) (sub1 n))))
+(fun (fact n) (fact_acc 1 n))
+(fact input)
+; ((input 10) (output 3628800))
+; ((input 20) (output 2432902008176640000))

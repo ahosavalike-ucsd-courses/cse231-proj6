@@ -70,9 +70,12 @@ pub fn compile_func_defns(fns: &Vec<Expr>, com: &mut ContextMut) -> Vec<Instr> {
     for f in fns {
         // No else block as we checked and paniced in preprocessing
         if let Expr::FnDefn(name, vars, body) = f {
-            let dep = com.fns.get_mut(name).unwrap().depth;
+            com.depth = com.fns.get_mut(name).unwrap().depth;
             // Separate context for each function definiton
-            let mut co = Context::new(None).modify_si(vars.len() as i32);
+            let mut co = Context::new(None)
+                .modify_si(vars.len() as i32)
+                // Function body is tail position
+                .modify_tail(true);
 
             for (i, v) in vars.iter().enumerate() {
                 let existing = co.env.get(v.as_str());
@@ -84,9 +87,9 @@ pub fn compile_func_defns(fns: &Vec<Expr>, com: &mut ContextMut) -> Vec<Instr> {
             }
 
             instrs.push(LabelI(Label::new(Some(&format!("fun_{name}")))));
-            instrs.push(Sub(ToReg(Rsp, Imm(dep * 8))));
+            instrs.push(Sub(ToReg(Rsp, Imm(com.depth * 8))));
             instrs.extend(compile_expr(body, &co, com));
-            instrs.push(Add(ToReg(Rsp, Imm(dep * 8))));
+            instrs.push(Add(ToReg(Rsp, Imm(com.depth * 8))));
             instrs.push(Ret);
         }
     }
@@ -94,10 +97,11 @@ pub fn compile_func_defns(fns: &Vec<Expr>, com: &mut ContextMut) -> Vec<Instr> {
 }
 
 pub fn compile_expr_with_unknown_input(e: &Expr, com: &mut ContextMut) -> Vec<Instr> {
-    let co = Context::new(None).modify_si(1);
-    let dep = depth_aligned(e, 3); // 1 extra for input
+    // Top level is not a tail position
+    let co = Context::new(None).modify_si(1).modify_tail(false);
+    com.depth = depth_aligned(e, 3); // 1 extra for input
     let mut instrs: Vec<Instr> = vec![
-        Sub(ToReg(Rsp, Imm(dep * 8))),
+        Sub(ToReg(Rsp, Imm(com.depth * 8))),
         Mov(ToMem(
             MemRef {
                 reg: Rsp,
@@ -108,18 +112,13 @@ pub fn compile_expr_with_unknown_input(e: &Expr, com: &mut ContextMut) -> Vec<In
     ];
     instrs.extend(compile_expr(
         e,
-        &co.modify(
-            None,
-            Some(
-                co.env
-                    .update("input".to_string(), VarEnv::new(0, None, false)),
-            ),
-            None,
-            None,
+        &co.modify_env(
+            co.env
+                .update("input".to_string(), VarEnv::new(0, None, false)),
         ),
         com,
     ));
-    instrs.push(Add(ToReg(Rsp, Imm(dep * 8))));
+    instrs.push(Add(ToReg(Rsp, Imm(com.depth * 8))));
     return instrs;
 }
 
@@ -177,6 +176,8 @@ pub fn compile_expr(e: &Expr, co: &Context, com: &mut ContextMut) -> Vec<Instr> 
             com.result_is_bool = venv.is_bool;
         }
         Expr::UnOp(op, subexpr) => {
+            // UnOp operand cannot be a tail position
+            let co = &co.modify_tail(false);
             instrs.extend(compile_expr(subexpr, co, com));
 
             match op {
@@ -241,6 +242,8 @@ pub fn compile_expr(e: &Expr, co: &Context, com: &mut ContextMut) -> Vec<Instr> 
             }
         }
         Expr::BinOp(op, left, right) => {
+            // BinOp operands cannot be a tail position
+            let co = &co.modify_tail(false);
             instrs.extend(compile_expr(
                 right,
                 &co.modify_target(Some(MemRef {
@@ -253,7 +256,7 @@ pub fn compile_expr(e: &Expr, co: &Context, com: &mut ContextMut) -> Vec<Instr> 
 
             instrs.extend(compile_expr(
                 left,
-                &co.modify(Some(co.si + 1), None, None, Some(None)),
+                &co.modify(Some(co.si + 1), None, None, Some(None), None),
                 com,
             ));
             let ltype = com.result_is_bool;
@@ -365,6 +368,8 @@ pub fn compile_expr(e: &Expr, co: &Context, com: &mut ContextMut) -> Vec<Instr> 
                             reg: Rsp,
                             offset: si_,
                         })),
+                        // Let binding is not a tail position
+                        Some(false),
                     ),
                     com,
                 ));
@@ -379,6 +384,7 @@ pub fn compile_expr(e: &Expr, co: &Context, com: &mut ContextMut) -> Vec<Instr> 
                     Some(new_env),
                     None,
                     None,
+                    None,
                 ),
                 com,
             ));
@@ -390,7 +396,12 @@ pub fn compile_expr(e: &Expr, co: &Context, com: &mut ContextMut) -> Vec<Instr> 
             com.index_used();
 
             // Use Rax
-            instrs.extend(compile_expr(c, &co.modify_target(None), com));
+            instrs.extend(compile_expr(
+                c,
+                // If condition is not a tail position
+                &co.modify_target(None).modify_tail(false),
+                com,
+            ));
             // If
             if com.result_is_bool.is_none() || com.result_is_bool.unwrap() {
                 instrs.push(Cmp(ToReg(Rax, FALSE)));
@@ -409,6 +420,8 @@ pub fn compile_expr(e: &Expr, co: &Context, com: &mut ContextMut) -> Vec<Instr> 
             }
         }
         Expr::Set(x, e) => {
+            // Set expression is not a tail position
+            let co = &co.modify_tail(false);
             instrs.extend(compile_expr(e, &co.modify_target(None), com));
 
             let venv = if co.env.contains_key(x) {
@@ -453,14 +466,16 @@ pub fn compile_expr(e: &Expr, co: &Context, com: &mut ContextMut) -> Vec<Instr> 
                 block_com.env.insert(k.clone(), v.clone());
             }
 
+            // Only last expression in the block can be a tail position
             let block_co = &co.modify_env(hashmap! {});
-            let block_co_rax = &block_co.modify_target(None);
+            let block_co_rax = &block_co.modify_target(None).modify_tail(false);
 
             // Only last instruction needs to be put into target
             for (i, e) in es.into_iter().enumerate() {
                 instrs.extend(compile_expr(
                     e,
                     if i + 1 == es.len() {
+                        // Last expression
                         block_co
                     } else {
                         block_co_rax
@@ -489,6 +504,8 @@ pub fn compile_expr(e: &Expr, co: &Context, com: &mut ContextMut) -> Vec<Instr> 
             co.rax_to_target(&mut instrs);
         }
         Expr::Break(e) => {
+            // TODO: Optimize this further?
+            let co = &co.modify_tail(false);
             if co.label.name == "" {
                 panic!("dangling break");
             } else {
@@ -519,29 +536,67 @@ pub fn compile_expr(e: &Expr, co: &Context, com: &mut ContextMut) -> Vec<Instr> 
                             reg: Rsp,
                             offset: co.si + i as i32,
                         })),
+                        // Arguments to function calls are not tail positions
+                        Some(false),
                     ),
                     com,
                 ));
             }
-            // Move result from main's stack to the callee's stack layout
-            for i in 0..args.len() as i32 {
-                instrs.push(Mov(ToReg(
-                    Rax,
-                    Mem(MemRef {
-                        reg: Rsp,
-                        offset: co.si + i,
-                    }),
-                )));
-                instrs.push(Mov(ToMem(
-                    MemRef {
-                        reg: Rsp,
-                        offset: -(fenv.depth + 1) + i,
-                    },
-                    OReg(Rax),
-                )));
+
+            if co.tail {
+                // Do tail call if co.tail is true
+                // Move result from current function's stack to the current function's arguments
+                let diff = com.depth - fenv.depth;
+                // No need to copy if already at the right place
+                if co.si != diff {
+                    // Copy top to bottom or bottom to top depending on diff and co.si
+                    let rng = if co.si > diff {
+                        0..args.len() as i32
+                    } else {
+                        (args.len() as i32 - 1)..-1
+                    };
+                    for i in rng {
+                        instrs.push(Mov(ToReg(
+                            Rax,
+                            Mem(MemRef {
+                                reg: Rsp,
+                                offset: co.si + i,
+                            }),
+                        )));
+                        instrs.push(Mov(ToMem(
+                            MemRef {
+                                reg: Rsp,
+                                offset: diff + i,
+                            },
+                            OReg(Rax),
+                        )));
+                    }
+                }
+                // Bring RSP to ret ptr
+                instrs.push(Add(ToReg(Rsp, Imm(com.depth * 8))));
+                instrs.push(JumpI(Jump::U(Label::new(Some(&format!("fun_{name}"))))))
+                // Already in tail position, no need to move to target
+            } else {
+                // Move result from current function's stack to the callee's stack layout
+                for i in 0..args.len() as i32 {
+                    instrs.push(Mov(ToReg(
+                        Rax,
+                        Mem(MemRef {
+                            reg: Rsp,
+                            offset: co.si + i,
+                        }),
+                    )));
+                    instrs.push(Mov(ToMem(
+                        MemRef {
+                            reg: Rsp,
+                            offset: -(fenv.depth + 1) + i,
+                        },
+                        OReg(Rax),
+                    )));
+                }
+                instrs.push(Call(Label::new(Some(&format!("fun_{name}")))));
+                co.rax_to_target(&mut instrs);
             }
-            instrs.push(Call(Label::new(Some(format!("fun_{name}").as_str()))));
-            co.rax_to_target(&mut instrs);
         }
         Expr::Define(_, _) => panic!("define cannot be compiled"),
         Expr::FnDefn(_, _, _) => panic!("Invalid: fn defn cannot be compiled here"),
