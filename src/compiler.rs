@@ -74,7 +74,7 @@ pub fn compile_func_defns(fns: &Vec<Expr>, com: &mut ContextMut) -> Vec<Instr> {
             // Separate context for each function definiton
             let mut co = Context::new(None)
                 .modify_si(vars.len() as i32)
-                // Top level is tail position
+                // Function body is tail position
                 .modify_tail(true);
 
             for (i, v) in vars.iter().enumerate() {
@@ -398,7 +398,7 @@ pub fn compile_expr(e: &Expr, co: &Context, com: &mut ContextMut) -> Vec<Instr> 
             // Use Rax
             instrs.extend(compile_expr(
                 c,
-                // Condition is not a tail position
+                // If condition is not a tail position
                 &co.modify_target(None).modify_tail(false),
                 com,
             ));
@@ -420,7 +420,7 @@ pub fn compile_expr(e: &Expr, co: &Context, com: &mut ContextMut) -> Vec<Instr> 
             }
         }
         Expr::Set(x, e) => {
-            // Set cannot be a tail position
+            // Set expression is not a tail position
             let co = &co.modify_tail(false);
             instrs.extend(compile_expr(e, &co.modify_target(None), com));
 
@@ -466,7 +466,7 @@ pub fn compile_expr(e: &Expr, co: &Context, com: &mut ContextMut) -> Vec<Instr> 
                 block_com.env.insert(k.clone(), v.clone());
             }
 
-            // Only last expression can be a tail position
+            // Only last expression in the block can be a tail position
             let block_co = &co.modify_env(hashmap! {});
             let block_co_rax = &block_co.modify_target(None).modify_tail(false);
 
@@ -536,7 +536,7 @@ pub fn compile_expr(e: &Expr, co: &Context, com: &mut ContextMut) -> Vec<Instr> 
                             reg: Rsp,
                             offset: co.si + i as i32,
                         })),
-                        // Arguments are not tail positions
+                        // Arguments to function calls are not tail positions
                         Some(false),
                     ),
                     com,
