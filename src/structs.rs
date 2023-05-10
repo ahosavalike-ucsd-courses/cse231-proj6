@@ -104,10 +104,7 @@ pub struct FunEnv {
 
 impl FunEnv {
     pub fn new(argc: i32, depth: i32) -> FunEnv {
-        FunEnv {
-            argc,
-            depth,
-        }
+        FunEnv { argc, depth }
     }
 }
 

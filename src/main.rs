@@ -39,7 +39,7 @@ fn main() -> std::io::Result<()> {
 
     let com = &mut ContextMut::new();
     let funcs = compile_func_defns(&funcs, com);
-    let result = compile_expr_with_unknown_input(&expr, com);
+    let result = compile_expr_aligned(&expr, None, Some(com), None);
 
     let asm_program = format!(
         "section .text

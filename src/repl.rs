@@ -77,16 +77,24 @@ fn print_result(result: u64) -> u64 {
     result
 }
 
-fn eval(instrs: &Vec<Instr>, exit: bool) -> i64 {
-    let mut ops = dynasmrt::x64::Assembler::new().unwrap();
-    let mut labels: im::HashMap<Label, dynasmrt::DynamicLabel> = hashmap! {};
-    add_interface_calls(&mut ops, &mut labels, exit);
-
+fn eval(
+    ops: &mut Assembler,
+    labels: &mut HashMap<Label, DynamicLabel>,
+    instrs: &Vec<Instr>,
+) -> u64 {
     let start = ops.offset();
-    instrs_to_asm(&instrs, &mut ops, &mut labels);
+    instrs_to_asm(&instrs, ops, labels);
     dynasm!(ops; .arch x64; ret);
-    let buf = ops.finalize().unwrap();
-    let jitted_fn: extern "C" fn() -> i64 = unsafe { mem::transmute(buf.ptr(start)) };
+
+    if let Err(e) = ops.commit() {
+        panic!("error committing ops {e}");
+    }
+
+    let jitted_fn: extern "C" fn() -> u64 = {
+        let reader = ops.reader();
+        let buf = reader.lock();
+        unsafe { mem::transmute(buf.ptr(start)) }
+    };
     jitted_fn()
 }
 
@@ -97,32 +105,29 @@ pub fn repl(eval_input: Option<(&Expr, &str)>) {
     let mut co = Context::new(Some(heap.as_mut_ptr()));
     let mut com = ContextMut::new();
 
+    let mut ops = Assembler::new().unwrap();
+    let mut labels: HashMap<Label, DynamicLabel> = hashmap! {};
+
     // Eval
     if let Some((eval_in, input)) = eval_input {
+        add_interface_calls(&mut ops, &mut labels, true);
         let mut instrs: Vec<Instr> = vec![];
         // Setup input
         let (input, is_bool) = parse_input(input);
-        co.env.insert(
-            "input".to_string(),
-            VarEnv {
-                offset: co.si,
-                is_bool: Some(is_bool),
-                in_heap: false,
-            },
-        );
-        instrs.push(Instr::Mov(MovArgs::ToMem(
-            MemRef {
-                reg: Reg::Rsp,
-                offset: co.si,
-            },
-            Arg64::Imm64(input),
-        )));
-        co.si += 1;
-        instrs.extend(compile_expr(eval_in, &co, &mut com));
-        return print_result(eval(&instrs, true));
+        instrs.push(Instr::Mov(MovArgs::ToReg(Reg::Rdi, Arg64::Imm64(input))));
+
+        instrs.extend(compile_expr_aligned(
+            eval_in,
+            Some(&co),
+            Some(&mut com),
+            Some(is_bool),
+        ));
+        print_result(eval(&mut ops, &mut labels, &instrs));
+        return;
     }
 
     // REPL
+    add_interface_calls(&mut ops, &mut labels, false);
     let mut line = String::new();
     loop {
         println!("{co:?}");
@@ -145,21 +150,15 @@ pub fn repl(eval_input: Option<(&Expr, &str)>) {
         }
 
         // Add top level list
-        if line.starts_with("let")
-            || line.starts_with("define")
-            || line.starts_with("add1")
-            || line.starts_with("sub1")
-            || line.starts_with("isnum")
-            || line.starts_with("isbool")
-            || line.starts_with("+")
-            || line.starts_with("*")
-            || line.starts_with("-")
-            || line.starts_with("set!")
-            || line.starts_with("loop")
-            || line.starts_with("if")
-            || line.starts_with("block")
-        {
-            line = format!("({line})");
+        let keywords = &vec![
+            "add1", "sub1", "let", "isnum", "isbool", "if", "loop", "break", "set!", "block",
+            "input", "print", "fun", "define", "+", "-", "*", "<", ">", ">=", "<=", "=",
+        ];
+        for k in keywords {
+            if line.starts_with(k) {
+                line = format!("({line})");
+                break;
+            }
         }
 
         // Parse and Compile, check for panic
@@ -171,16 +170,19 @@ pub fn repl(eval_input: Option<(&Expr, &str)>) {
                     panic!("Error parsing input: {e}")
                 }
             });
+
+            // TODO: Check for usage of input, if so ask for input and validate
+
             if let Expr::Define(x, e) = expr {
                 (
                     Some(x),
-                    compile_expr(&e, &co, com_discard),
+                    compile_expr_aligned(&e, Some(&co), Some(com_discard), None),
                     com_discard.result_is_bool,
                 )
             } else {
                 (
                     None,
-                    compile_expr(&expr, &co, com_discard),
+                    compile_expr_aligned(&expr, Some(&co), Some(com_discard), None),
                     com_discard.result_is_bool,
                 )
             }
@@ -197,7 +199,7 @@ pub fn repl(eval_input: Option<(&Expr, &str)>) {
                         if !co.env.contains_key(x) {
                             // Increment heap index and extend heap if overflow
                             co.hi += 1;
-                            -co.hi+1
+                            -co.hi + 1
                         } else {
                             co.env.get(x).unwrap().offset
                         },
@@ -220,9 +222,11 @@ pub fn repl(eval_input: Option<(&Expr, &str)>) {
                 )));
             }
 
-            for i in &instrs {println!("{i:?}");}
+            for i in &instrs {
+                println!("{i:?}");
+            }
 
-            print_result(eval(&instrs, false));
+            print_result(eval(&mut ops, &mut labels, &instrs));
         };
 
         // Increase heap if needed

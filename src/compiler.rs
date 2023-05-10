@@ -96,10 +96,26 @@ pub fn compile_func_defns(fns: &Vec<Expr>, com: &mut ContextMut) -> Vec<Instr> {
     return instrs;
 }
 
-pub fn compile_expr_with_unknown_input(e: &Expr, com: &mut ContextMut) -> Vec<Instr> {
+pub fn compile_expr_aligned(
+    e: &Expr,
+    co: Option<&Context>,
+    com: Option<&mut ContextMut>,
+    input: Option<bool>,
+) -> Vec<Instr> {
     // Top level is not a tail position
-    let co = Context::new(None).modify_si(1).modify_tail(false);
-    com.depth = depth_aligned(e, 3); // 1 extra for input
+    let mut co_ = &Context::new(None).modify_si(1);
+    if let Some(x) = co {
+        co_ = x;
+    };
+    let co = co_;
+    let mut com_ = &mut ContextMut::new();
+    if let Some(x) = com {
+        com_ = x;
+    }
+    let com = com_;
+
+    com.depth = depth_aligned(e, if let Some(_) = input { 3 } else { 2 }); // 1 extra for input
+
     let mut instrs: Vec<Instr> = vec![
         Sub(ToReg(Rsp, Imm(com.depth * 8))),
         Mov(ToMem(
@@ -114,7 +130,7 @@ pub fn compile_expr_with_unknown_input(e: &Expr, com: &mut ContextMut) -> Vec<In
         e,
         &co.modify_env(
             co.env
-                .update("input".to_string(), VarEnv::new(0, None, false)),
+                .update("input".to_string(), VarEnv::new(0, input, false)),
         ),
         com,
     ));
