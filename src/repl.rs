@@ -1,4 +1,4 @@
-use dynasmrt::{dynasm, DynamicLabel, DynasmApi, DynasmLabelApi};
+use dynasmrt::{dynasm, x64::Assembler, DynamicLabel, DynasmApi, DynasmLabelApi};
 use im::hashmap;
 use im::HashMap;
 use sexp::*;
@@ -37,19 +37,21 @@ fn snek_error_print(errcode: i64) {
     );
 }
 
-fn add_interface_calls(
-    ops: &mut dynasmrt::x64::Assembler,
-    lbls: &mut HashMap<Label, DynamicLabel>,
-    exit: bool,
-) {
+fn add_interface_calls(ops: &mut Assembler, lbls: &mut HashMap<Label, DynamicLabel>, exit: bool) {
     let snek_error_lbl = ops.new_dynamic_label();
-    lbls.insert(Label::new(Some("snek_error")), snek_error_lbl);
+    lbls.insert(Label::new(Some("snek_error_stub")), snek_error_lbl);
     dynasm!(ops; .arch x64; =>snek_error_lbl);
     if exit {
         dynasm!(ops; .arch x64; mov rax, QWORD snek_error_exit as _);
     } else {
         dynasm!(ops; .arch x64; mov rax, QWORD snek_error_print as _);
     }
+    dynasm!(ops; .arch x64; call rax; ret);
+
+    let snek_print_lbl = ops.new_dynamic_label();
+    lbls.insert(Label::new(Some("snek_print")), snek_print_lbl);
+    dynasm!(ops; .arch x64; =>snek_print_lbl);
+    dynasm!(ops; .arch x64; mov rax, QWORD print_result as _);
     dynasm!(ops; .arch x64; call rax; ret);
 }
 
@@ -62,7 +64,7 @@ fn parse_input(input: &str) -> (i64, bool) {
     }
 }
 
-fn print_result(result: i64) {
+fn print_result(result: u64) -> u64 {
     if result % 2 == 0 {
         println!("{}", result as i64 / 2);
     } else if result == 1 {
@@ -72,6 +74,7 @@ fn print_result(result: i64) {
     } else {
         println!("Unknown format: {result}")
     }
+    result
 }
 
 fn eval(instrs: &Vec<Instr>, exit: bool) -> i64 {
