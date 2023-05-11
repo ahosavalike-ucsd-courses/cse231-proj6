@@ -102,7 +102,7 @@ pub fn repl(eval_input: Option<(&Expr, &str)>) {
     // Initial heap size low to see reallocations
     let mut heap: Vec<u64> = vec![0; 1];
 
-    let mut co = Context::new(Some(heap.as_mut_ptr()));
+    let mut co = Context::new(Some(heap.as_mut_ptr())).modify_si(1);
     let mut com = ContextMut::new();
 
     let mut ops = Assembler::new().unwrap();
