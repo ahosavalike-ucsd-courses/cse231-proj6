@@ -173,60 +173,84 @@ pub fn repl(eval_input: Option<(&Expr, &str)>) {
 
             // TODO: Check for usage of input, if so ask for input and validate
 
-            if let Expr::Define(x, e) = expr {
-                (
-                    Some(x),
+            match &expr {
+                Expr::Define(x, e) => CompileResponse::Define(
+                    x.clone(),
                     compile_expr_aligned(&e, Some(&co), Some(com_discard), None),
                     com_discard.result_is_bool,
-                )
-            } else {
-                (
+                ),
+                Expr::FnDefn(f, args, _) => CompileResponse::FnDefn(
+                    f.clone(),
+                    args.clone(),
+                    depth(&expr),
+                    compile_func_defns(&vec![expr], com_discard),
+                ),
+                _ => CompileResponse::Expr(compile_expr_aligned(
+                    &expr,
+                    Some(&co),
+                    Some(com_discard),
                     None,
-                    compile_expr_aligned(&expr, Some(&co), Some(com_discard), None),
-                    com_discard.result_is_bool,
-                )
+                )),
             }
         });
 
         // Eval with dynasm
-        if let Ok((var, mut instrs, is_bool)) = res {
-            // Check if this was a defined variable
-            if let Some(x) = &var {
-                // Update even if present, type might have changed
-                co.env.insert(
-                    x.to_string(),
-                    VarEnv::new(
-                        if !co.env.contains_key(x) {
-                            // Increment heap index and extend heap if overflow
-                            co.hi += 1;
-                            -co.hi + 1
-                        } else {
-                            co.env.get(x).unwrap().offset
+        if let Ok(res) = res {
+            let instrs = &mut match res {
+                CompileResponse::Define(x, mut instrs, is_bool) => {
+                    // Update even if present, type might have changed
+                    co.env.insert(
+                        x.to_string(),
+                        VarEnv::new(
+                            if !co.env.contains_key(&x) {
+                                // Increment heap index and extend heap if overflow
+                                co.hi += 1;
+                                -co.hi + 1
+                            } else {
+                                co.env.get(&x).unwrap().offset
+                            },
+                            is_bool,
+                            true,
+                        ),
+                    );
+
+                    // Move RAX to heap
+                    instrs.push(Instr::Mov(MovArgs::ToReg(
+                        Reg::Rbx,
+                        Arg64::Imm64(co.get_heap()),
+                    )));
+                    instrs.push(Instr::Mov(MovArgs::ToMem(
+                        MemRef {
+                            reg: Reg::Rbx,
+                            offset: co.env.get(&x).unwrap().offset,
                         },
-                        is_bool,
-                        true,
-                    ),
-                );
+                        Arg64::OReg(Reg::Rax),
+                    )));
+                    instrs
+                }
+                CompileResponse::FnDefn(f, a, depth, instrs) => {
+                    com.fns.insert(f.clone(), FunEnv { argc: a.len() as i32, depth });
+                    labels.insert(Label::new(Some(&format!("fun_{f}"))), ops.new_dynamic_label());
+                    
+                    // dynasm!(ops; .arch x64; => fun_lbl);
+                    instrs_to_asm(&instrs, &mut ops, &mut labels);
+                    if let Err(e) = ops.commit() {
+                        println!("{e}");
+                    }
+                    // Do not run any code
+                    for i in &*instrs {
+                        println!("{i:?}");
+                    }
+                    continue;
+                },
+                CompileResponse::Expr(instrs) => instrs,
+            };
 
-                // Move RAX to heap
-                instrs.push(Instr::Mov(MovArgs::ToReg(
-                    Reg::Rbx,
-                    Arg64::Imm64(co.get_heap()),
-                )));
-                instrs.push(Instr::Mov(MovArgs::ToMem(
-                    MemRef {
-                        reg: Reg::Rbx,
-                        offset: co.env.get(x).unwrap().offset,
-                    },
-                    Arg64::OReg(Reg::Rax),
-                )));
-            }
-
-            for i in &instrs {
+            for i in &*instrs {
                 println!("{i:?}");
             }
 
-            print_result(eval(&mut ops, &mut labels, &instrs));
+            print_result(eval(&mut ops, &mut labels, instrs));
         };
 
         // Increase heap if needed
