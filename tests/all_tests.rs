@@ -41,6 +41,11 @@ success_tests! {
 		expected: "7",
 	},
 	{
+		name: binding_long_1,
+		file: "binding_long.snek",
+		expected: "1073741824",
+	},
+	{
 		name: set_expr3_4,
 		file: "set_expr3.snek",
 		input: "25",
