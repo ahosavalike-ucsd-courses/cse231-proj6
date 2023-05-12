@@ -507,7 +507,8 @@ impl Instr {
                             dynasm!(ops; .arch x64; mov QWORD [Rq(m.reg.asm()) + m.offset*8], n)
                         }
                         Err(_) => {
-                            dynasm!(ops; .arch x64; mov rcx, QWORD *n; mov QWORD [Rq(m.reg.asm()) + m.offset*8], rcx)
+                            panic!("cannot mov qword to mem")
+                            // dynasm!(ops; .arch x64; mov rax, QWORD *n; mov QWORD [Rq(m.reg.asm()) + m.offset*8], rax)
                         }
                     },
                     Mem(_) => panic!("cannot mov from memory to memory"),

@@ -133,8 +133,12 @@ pub fn compile_expr(e: &Expr, co: &Context, com: &mut ContextMut) -> Vec<Instr> 
                 panic!("Invalid");
             }
 
-            let res = Imm64(i);
-            instrs.push(Mov(co.src_to_target(res)));
+            if let Ok(n) = i32::try_from(i) {
+                instrs.push(Mov(co.src_to_target(Imm(n))));
+            } else {
+                instrs.push(Mov(ToReg(Rax, Imm64(i))));
+                instrs.push(Mov(co.src_to_target(OReg(Rax))));
+            }
 
             com.result_is_bool = Some(false);
         }
