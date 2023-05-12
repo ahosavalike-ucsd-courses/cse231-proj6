@@ -137,7 +137,7 @@ pub fn compile_expr(e: &Expr, co: &Context, com: &mut ContextMut) -> Vec<Instr> 
                 instrs.push(Mov(co.src_to_target(Imm(n))));
             } else {
                 instrs.push(Mov(ToReg(Rax, Imm64(i))));
-                instrs.push(Mov(co.src_to_target(OReg(Rax))));
+                co.rax_to_target(&mut instrs);
             }
 
             com.result_is_bool = Some(false);
