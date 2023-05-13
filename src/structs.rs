@@ -104,10 +104,7 @@ pub struct FunEnv {
 
 impl FunEnv {
     pub fn new(argc: i32, depth: i32) -> FunEnv {
-        FunEnv {
-            argc,
-            depth,
-        }
+        FunEnv { argc, depth }
     }
 }
 
@@ -635,4 +632,12 @@ impl Instr {
             Ret => dynasm!(ops; .arch x64; ret),
         }
     }
+}
+
+// REPL structs
+
+pub enum CompileResponse{
+    Define(String, Vec<Instr>, Option<bool>),
+    FnDefn(String, Vec<String>, i32, Vec<Instr>),
+    Expr(Vec<Instr>),
 }
