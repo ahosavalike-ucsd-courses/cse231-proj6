@@ -92,18 +92,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "diamondback"
-version = "0.1.0"
-dependencies = [
- "dynasm",
- "dynasmrt",
- "im",
- "prettydiff",
- "sexp",
- "unwind_safe",
-]
-
-[[package]]
 name = "dirs-next"
 version = "2.0.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -149,6 +137,18 @@ dependencies = [
  "dynasm",
  "fnv",
  "memmap2",
+]
+
+[[package]]
+name = "eggeater"
+version = "0.1.0"
+dependencies = [
+ "dynasm",
+ "dynasmrt",
+ "im",
+ "prettydiff",
+ "sexp",
+ "unwind_safe",
 ]
 
 [[package]]

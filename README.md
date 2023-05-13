@@ -1,4 +1,4 @@
-# Diamondback
+# Egg Eater
 
 ## Calling Convention
 Move stack up by the depth of the function body + number of arguments to the function at the start of each call. The stack is aligned to 16 bytes along with the move. Arguments are at the very top. For the main function, the input is at the top.
