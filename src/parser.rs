@@ -35,6 +35,7 @@ pub fn parse_expr(s: &Sexp) -> Expr {
         Sexp::Atom(S(x)) => match x.as_str() {
             "true" => Expr::Boolean(true),
             "false" => Expr::Boolean(false),
+            "nil" => Expr::Nil,
             _ => Expr::Var(String::from(x)),
         },
         // List of tokens
@@ -49,6 +50,14 @@ pub fn parse_expr(s: &Sexp) -> Expr {
                     panic!("Invalid")
                 }
                 Expr::Block(es.into_iter().map(parse_expr).collect())
+            }
+            // List
+            [Sexp::Atom(S(op)), es @ ..] if op == "list" => {
+                if es.len() == 0 {
+                    Expr::Nil
+                } else {
+                    Expr::List(es.into_iter().map(parse_expr).collect())
+                }
             }
             // Define
             [Sexp::Atom(S(op)), Sexp::Atom(S(x)), e] if op == "define" => {
@@ -133,6 +142,7 @@ pub fn parse_expr(s: &Sexp) -> Expr {
                     "<" => Op2::Less,
                     ">=" => Op2::GreaterEqual,
                     "<=" => Op2::LessEqual,
+                    "index" => Op2::Index,
                     _ => panic!("Invalid {op}"),
                 },
                 Box::new(parse_expr(l)),

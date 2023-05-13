@@ -55,12 +55,15 @@ fn add_interface_calls(ops: &mut Assembler, lbls: &mut HashMap<Label, DynamicLab
     dynasm!(ops; .arch x64; call rax; ret);
 }
 
-fn parse_input(input: &str) -> (i64, bool) {
+fn parse_input(input: &str) -> (i64, Type) {
     // parse the input string into internal value representation
     match input {
-        "true" => (3, true),
-        "false" | "" => (1, true),
-        _ => (input.parse::<i64>().expect("Invalid") << 1, false),
+        "true" => (3, Type::Bool),
+        "false" | "" => (1, Type::Bool),
+        x => {
+            let x = x.parse::<i64>().expect("Invalid") << 1;
+            if x & 1 == 0 { (x, Type::Int) } else { (x, Type::Pair(None)) }
+        },
     }
 }
 
@@ -177,7 +180,7 @@ pub fn repl(eval_input: Option<(&Expr, &str)>) {
                 Expr::Define(x, e) => CompileResponse::Define(
                     x.clone(),
                     compile_expr_aligned(&e, Some(&co), Some(com_discard), None),
-                    com_discard.result_is_bool,
+                    com_discard.result_type,
                 ),
                 Expr::FnDefn(f, args, _) => CompileResponse::FnDefn(
                     f.clone(),

@@ -24,10 +24,12 @@ pub enum Op2 {
     GreaterEqual,
     Less,
     LessEqual,
+    Index,
 }
 
 #[derive(Debug)]
 pub enum Expr {
+    Nil,
     Num(i64),
     Boolean(bool),
     Var(String),
@@ -37,6 +39,7 @@ pub enum Expr {
     BinOp(Op2, Box<Expr>, Box<Expr>),
     If(Box<Expr>, Box<Expr>, Box<Expr>),
     Loop(Box<Expr>),
+    List(Vec<Expr>),
     Break(Box<Expr>),
     Set(String, Box<Expr>),
     Block(Vec<Expr>),
@@ -82,15 +85,15 @@ impl fmt::Display for Label {
 #[derive(Clone, Debug)]
 pub struct VarEnv {
     pub offset: i32,
-    pub is_bool: Option<bool>,
+    pub vtype: Option<Type>,
     pub in_heap: bool,
 }
 
 impl VarEnv {
-    pub fn new(offset: i32, is_bool: Option<bool>, in_heap: bool) -> VarEnv {
+    pub fn new(offset: i32, vtype: Option<Type>, in_heap: bool) -> VarEnv {
         VarEnv {
             offset,
-            is_bool,
+            vtype,
             in_heap,
         }
     }
@@ -108,11 +111,18 @@ impl FunEnv {
     }
 }
 
+#[derive(Copy, Clone, Debug, PartialEq)]
+pub enum Type {
+    Int,
+    Bool,
+    Pair(Option<u64>),
+}
+
 #[derive(Clone, Debug)]
 pub struct ContextMut {
     pub env: HashMap<String, VarEnv>,
     pub label_index: i32,
-    pub result_is_bool: Option<bool>,
+    pub result_type: Option<Type>,
     pub fns: HashMap<String, FunEnv>,
     pub depth: i32,
 }
@@ -122,7 +132,7 @@ impl ContextMut {
         ContextMut {
             env: hashmap! {},
             label_index: 0,
-            result_is_bool: None,
+            result_type: None,
             fns: hashmap! {},
             depth: 0,
         }
@@ -143,7 +153,7 @@ impl ContextMut {
         for (k, v) in other.env.iter() {
             self.env.insert(k.clone(), v.clone());
         }
-        self.result_is_bool = other.result_is_bool;
+        self.result_type = other.result_type;
         self.label_index = other.label_index;
     }
 }
@@ -637,7 +647,7 @@ impl Instr {
 // REPL structs
 
 pub enum CompileResponse{
-    Define(String, Vec<Instr>, Option<bool>),
+    Define(String, Vec<Instr>, Option<Type>),
     FnDefn(String, Vec<String>, i32, Vec<Instr>),
     Expr(Vec<Instr>),
 }

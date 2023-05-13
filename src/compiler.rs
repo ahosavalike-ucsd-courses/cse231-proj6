@@ -3,6 +3,7 @@ use Arg64::*;
 use Instr::*;
 use MovArgs::*;
 use Reg::*;
+use Type::*;
 
 use dynasmrt::DynamicLabel;
 
@@ -14,6 +15,7 @@ const FALSE: Arg64 = Imm(1);
 
 pub fn depth(e: &Expr) -> i32 {
     match e {
+        Expr::Nil => 0,
         Expr::Num(_) => 0,
         Expr::Var(_) => 0,
         Expr::Boolean(_) => 0,
@@ -27,6 +29,12 @@ pub fn depth(e: &Expr) -> i32 {
             .max()
             .unwrap_or(0)
             .max(bindings.len() as i32 + depth(e)),
+        Expr::List(es) => es
+            .iter()
+            .enumerate()
+            .map(|(i, e)| (i as i32 + depth(e)))
+            .max()
+            .unwrap_or(0),
         Expr::If(cond, then, other) => depth(cond).max(depth(then)).max(depth(other)),
         Expr::Loop(e) => depth(e),
         Expr::Block(es) => es.iter().map(|expr| depth(expr)).max().unwrap_or(0),
@@ -100,7 +108,7 @@ pub fn compile_expr_aligned(
     e: &Expr,
     co: Option<&Context>,
     com: Option<&mut ContextMut>,
-    input: Option<bool>,
+    input: Option<Type>,
 ) -> Vec<Instr> {
     // Top level is not a tail position
     let mut co_ = &Context::new(None).modify_si(1);
@@ -156,7 +164,7 @@ pub fn compile_expr(e: &Expr, co: &Context, com: &mut ContextMut) -> Vec<Instr> 
                 co.rax_to_target(&mut instrs);
             }
 
-            com.result_is_bool = Some(false);
+            com.result_type = Some(Int);
         }
         Expr::Boolean(b) => {
             let res = match b {
@@ -164,7 +172,7 @@ pub fn compile_expr(e: &Expr, co: &Context, com: &mut ContextMut) -> Vec<Instr> 
                 false => FALSE,
             };
             instrs.push(Mov(co.src_to_target(res)));
-            com.result_is_bool = Some(true);
+            com.result_type = Some(Bool);
         }
         Expr::Var(x) => {
             // Get variable's VarEnv
@@ -193,7 +201,7 @@ pub fn compile_expr(e: &Expr, co: &Context, com: &mut ContextMut) -> Vec<Instr> 
                 }),
             )));
             co.rax_to_target(&mut instrs);
-            com.result_is_bool = venv.is_bool;
+            com.result_type = venv.vtype;
         }
         Expr::UnOp(op, subexpr) => {
             // UnOp operand cannot be a tail position
@@ -203,39 +211,47 @@ pub fn compile_expr(e: &Expr, co: &Context, com: &mut ContextMut) -> Vec<Instr> 
             match op {
                 Op1::Add1 => {
                     // Check if Rax is number
-                    if com.result_is_bool.is_none() {
-                        instrs.push(Test(co.src_to_target(Imm(1))));
-                        instrs.push(Mov(ToReg(Rdi, Imm(20)))); // invalid argument
-                        instrs.push(JumpI(Jump::Nz(snek_error.clone())));
-                    } else if com.result_is_bool.unwrap() {
-                        instrs.push(Mov(ToReg(Rdi, Imm(20)))); // invalid argument
-                        instrs.push(JumpI(Jump::U(snek_error.clone())));
-                        com.result_is_bool = Some(false);
-                        return instrs;
+                    match com.result_type {
+                        None => {
+                            instrs.push(Test(co.src_to_target(Imm(1))));
+                            instrs.push(Mov(ToReg(Rdi, Imm(20)))); // invalid argument
+                            instrs.push(JumpI(Jump::Nz(snek_error.clone())));
+                        }
+                        Some(Int) => {}
+                        _ => {
+                            instrs.push(Mov(ToReg(Rdi, Imm(20)))); // invalid argument
+                            instrs.push(JumpI(Jump::U(snek_error.clone())));
+                            com.result_type = Some(Int);
+                            return instrs;
+                        }
                     }
                     instrs.push(Add(co.src_to_target(Imm(2))));
                     // Check overflow
                     instrs.push(Mov(ToReg(Rdi, Imm(30))));
                     instrs.push(JumpI(Jump::O(snek_error)));
-                    com.result_is_bool = Some(false);
+                    com.result_type = Some(Int);
                 }
                 Op1::Sub1 => {
                     // Check if Rax is number
-                    if com.result_is_bool.is_none() {
-                        instrs.push(Test(co.src_to_target(Imm(1))));
-                        instrs.push(Mov(ToReg(Rdi, Imm(20)))); // invalid argument
-                        instrs.push(JumpI(Jump::Nz(snek_error.clone())));
-                    } else if com.result_is_bool.unwrap() {
-                        instrs.push(Mov(ToReg(Rdi, Imm(20)))); // invalid argument
-                        instrs.push(JumpI(Jump::U(snek_error.clone())));
-                        com.result_is_bool = Some(false);
-                        return instrs;
+                    match com.result_type {
+                        None => {
+                            instrs.push(Test(co.src_to_target(Imm(1))));
+                            instrs.push(Mov(ToReg(Rdi, Imm(20)))); // invalid argument
+                            instrs.push(JumpI(Jump::Nz(snek_error.clone())));
+                        }
+                        Some(Int) => {}
+                        _ => {
+                            instrs.push(Mov(ToReg(Rdi, Imm(20)))); // invalid argument
+                            instrs.push(JumpI(Jump::U(snek_error.clone())));
+                            com.result_type = Some(Int);
+                            return instrs;
+                        }
                     }
                     instrs.push(Sub(co.src_to_target(Imm(2))));
                     // Check overflow
                     instrs.push(Mov(ToReg(Rdi, Imm(30))));
                     instrs.push(JumpI(Jump::O(snek_error)));
-                    com.result_is_bool = Some(false);
+                    com.result_type = Some(Int);
                 }
                 Op1::IsBool => {
                     instrs.push(And(co.src_to_target(Imm(1))));
@@ -244,7 +260,7 @@ pub fn compile_expr(e: &Expr, co: &Context, com: &mut ContextMut) -> Vec<Instr> 
                     instrs.push(CMovI(CMov::Z(Rax, OReg(Rbx)))); // Set false if zero
                     co.rax_to_target(&mut instrs);
 
-                    com.result_is_bool = Some(true);
+                    com.result_type = Some(Bool);
                 }
                 Op1::IsNum => {
                     instrs.push(And(co.src_to_target(Imm(1))));
@@ -253,7 +269,7 @@ pub fn compile_expr(e: &Expr, co: &Context, com: &mut ContextMut) -> Vec<Instr> 
                     instrs.push(CMovI(CMov::Z(Rax, OReg(Rbx)))); // Set true if zero
                     co.rax_to_target(&mut instrs);
 
-                    com.result_is_bool = Some(true);
+                    com.result_type = Some(Bool);
                 }
                 Op1::Print => {
                     instrs.extend(co.target_to_reg(Rdi));
@@ -272,101 +288,112 @@ pub fn compile_expr(e: &Expr, co: &Context, com: &mut ContextMut) -> Vec<Instr> 
                 })),
                 com,
             ));
-            let rtype = com.result_is_bool;
+            let rtype = com.result_type;
 
             instrs.extend(compile_expr(
                 left,
                 &co.modify(Some(co.si + 1), None, None, Some(None), None),
                 com,
             ));
-            let ltype = com.result_is_bool;
+            let ltype = com.result_type;
 
             let mem = Mem(MemRef {
                 reg: Rsp,
                 offset: co.si,
             });
 
-            if let Op2::Equal = op {
-                let needs_check = ltype.is_none() || rtype.is_none();
-                if ltype.is_some() && rtype.is_some() && ltype != rtype {
-                    instrs.push(Mov(ToReg(Rdi, Imm(21)))); // invalid argument
-                    instrs.push(JumpI(Jump::Nz(snek_error.clone())));
-                    com.result_is_bool = Some(true);
-                    return instrs;
-                }
-                // Check equality with sub instead of cmp
-                instrs.push(Sub(ToReg(Rax, mem)));
-                if needs_check {
-                    instrs.push(Push(Rax)); // Push to stack for checking type later
-                }
-                instrs.push(Mov(ToReg(Rax, FALSE))); // Set false
-                instrs.push(Mov(ToReg(Rbx, TRUE)));
-                instrs.push(CMovI(CMov::E(Rax, OReg(Rbx))));
-
-                if needs_check {
-                    // Check if both were of the same type
-                    instrs.push(Pop(Rbx));
-                    instrs.push(Test(ToReg(Rbx, Imm(1))));
-                    instrs.push(Mov(ToReg(Rdi, Imm(22)))); // invalid argument
-                    instrs.push(JumpI(Jump::Nz(snek_error.clone())));
-                }
-                com.result_is_bool = Some(true);
-            } else {
-                // Check if Rax and mem is a number
-                if (ltype.is_some() && ltype.unwrap()) || (rtype.is_some() && rtype.unwrap()) {
-                    instrs.push(Mov(ToReg(Rdi, Imm(23)))); // invalid argument
-                    instrs.push(JumpI(Jump::U(snek_error.clone())));
-                    com.result_is_bool = Some(if let Op2::Plus | Op2::Minus | Op2::Times = op {
-                        false
-                    } else {
-                        true
-                    });
-                    return instrs;
-                }
-                if ltype.is_none() {
-                    instrs.push(Test(ToReg(Rax, Imm(1))));
-                    instrs.push(Mov(ToReg(Rdi, Imm(24)))); // invalid argument
-                    instrs.push(JumpI(Jump::Nz(snek_error.clone())));
-                }
-                if rtype.is_none() {
-                    instrs.push(Test(ToMem(
-                        MemRef {
-                            reg: Rsp,
-                            offset: co.si,
-                        },
-                        Imm(1),
-                    )));
-                    instrs.push(Mov(ToReg(Rdi, Imm(25)))); // invalid argument
-                    instrs.push(JumpI(Jump::Nz(snek_error.clone())));
-                }
-
-                if let Op2::Plus | Op2::Minus | Op2::Times = op {
-                    match op {
-                        Op2::Plus => instrs.push(Add(ToReg(Rax, mem))),
-                        Op2::Minus => instrs.push(Sub(ToReg(Rax, mem))),
-                        Op2::Times => {
-                            instrs.push(Sar(Rax, 1));
-                            instrs.push(Mul(Rax, mem));
-                        }
-                        _ => panic!("should not happen"),
+            match op {
+                Op2::Equal => {
+                    let needs_check = ltype.is_none() || rtype.is_none();
+                    if ltype.is_some() && rtype.is_some() && ltype != rtype {
+                        instrs.push(Mov(ToReg(Rdi, Imm(21)))); // invalid argument
+                        instrs.push(JumpI(Jump::Nz(snek_error.clone())));
+                        com.result_type = Some(Bool);
+                        return instrs;
                     }
-                    instrs.push(Mov(ToReg(Rdi, Imm(32)))); // overflow
-                    instrs.push(JumpI(Jump::O(snek_error)));
-                    com.result_is_bool = Some(false);
-                } else {
-                    instrs.push(Cmp(ToReg(Rax, mem)));
+                    // Check equality with sub instead of cmp
+                    instrs.push(Sub(ToReg(Rax, mem)));
+                    if needs_check {
+                        instrs.push(Push(Rax)); // Push to stack for checking type later
+                    }
                     instrs.push(Mov(ToReg(Rax, FALSE))); // Set false
                     instrs.push(Mov(ToReg(Rbx, TRUE)));
-                    match op {
-                        Op2::Greater => instrs.push(CMovI(CMov::G(Rax, OReg(Rbx)))),
-                        Op2::GreaterEqual => instrs.push(CMovI(CMov::GE(Rax, OReg(Rbx)))),
-                        Op2::Less => instrs.push(CMovI(CMov::L(Rax, OReg(Rbx)))),
-                        Op2::LessEqual => instrs.push(CMovI(CMov::LE(Rax, OReg(Rbx)))),
-                        _ => panic!("should not happen"),
+                    instrs.push(CMovI(CMov::E(Rax, OReg(Rbx))));
+
+                    if needs_check {
+                        // Check if both were of the same type
+                        instrs.push(Pop(Rbx));
+                        instrs.push(Test(ToReg(Rbx, Imm(1))));
+                        instrs.push(Mov(ToReg(Rdi, Imm(22)))); // invalid argument
+                        instrs.push(JumpI(Jump::Nz(snek_error.clone())));
                     }
-                    com.result_is_bool = Some(true);
+                    com.result_type = Some(Bool);
                 }
-            };
+                _ => {
+                    // Check if Rax and mem is a number
+                    if match ltype {
+                        Some(Int) | None => false,
+                        _ => true
+                    } || match rtype {
+                        Some(Int) | None => false,
+                        _ => true
+                    } {
+                        instrs.push(Mov(ToReg(Rdi, Imm(23)))); // invalid argument
+                        instrs.push(JumpI(Jump::U(snek_error.clone())));
+                        com.result_type =
+                            Some(if let Op2::Plus | Op2::Minus | Op2::Times = op {
+                                Int
+                            } else {
+                                Bool
+                            });
+                        return instrs;
+                    }
+
+                    if ltype.is_none() {
+                        instrs.push(Test(ToReg(Rax, Imm(1))));
+                        instrs.push(Mov(ToReg(Rdi, Imm(24)))); // invalid argument
+                        instrs.push(JumpI(Jump::Nz(snek_error.clone())));
+                    }
+                    if rtype.is_none() {
+                        instrs.push(Test(ToMem(
+                            MemRef {
+                                reg: Rsp,
+                                offset: co.si,
+                            },
+                            Imm(1),
+                        )));
+                        instrs.push(Mov(ToReg(Rdi, Imm(25)))); // invalid argument
+                        instrs.push(JumpI(Jump::Nz(snek_error.clone())));
+                    }
+
+                    if let Op2::Plus | Op2::Minus | Op2::Times = op {
+                        match op {
+                            Op2::Plus => instrs.push(Add(ToReg(Rax, mem))),
+                            Op2::Minus => instrs.push(Sub(ToReg(Rax, mem))),
+                            Op2::Times => {
+                                instrs.push(Sar(Rax, 1));
+                                instrs.push(Mul(Rax, mem));
+                            }
+                            _ => panic!("should not happen"),
+                        }
+                        instrs.push(Mov(ToReg(Rdi, Imm(32)))); // overflow
+                        instrs.push(JumpI(Jump::O(snek_error)));
+                        com.result_type = Some(Int);
+                    } else {
+                        instrs.push(Cmp(ToReg(Rax, mem)));
+                        instrs.push(Mov(ToReg(Rax, FALSE))); // Set false
+                        instrs.push(Mov(ToReg(Rbx, TRUE)));
+                        match op {
+                            Op2::Greater => instrs.push(CMovI(CMov::G(Rax, OReg(Rbx)))),
+                            Op2::GreaterEqual => instrs.push(CMovI(CMov::GE(Rax, OReg(Rbx)))),
+                            Op2::Less => instrs.push(CMovI(CMov::L(Rax, OReg(Rbx)))),
+                            Op2::LessEqual => instrs.push(CMovI(CMov::LE(Rax, OReg(Rbx)))),
+                            _ => panic!("should not happen"),
+                        }
+                        com.result_type = Some(Bool);
+                    }
+                }
+            }
             co.rax_to_target(&mut instrs);
         }
         Expr::Let(bindings, e) => {
@@ -394,7 +421,7 @@ pub fn compile_expr(e: &Expr, co: &Context, com: &mut ContextMut) -> Vec<Instr> 
                     com,
                 ));
                 track_dup.insert(x.to_string(), true);
-                new_env.insert(x.to_string(), VarEnv::new(si_, com.result_is_bool, false));
+                new_env.insert(x.to_string(), VarEnv::new(si_, com.result_type, false));
             }
 
             instrs.extend(compile_expr(
@@ -423,7 +450,10 @@ pub fn compile_expr(e: &Expr, co: &Context, com: &mut ContextMut) -> Vec<Instr> 
                 com,
             ));
             // If
-            if com.result_is_bool.is_none() || com.result_is_bool.unwrap() {
+            if match com.result_type {
+                None | Some(Type::Bool) => true,
+                _ => false,
+            } {
                 instrs.push(Cmp(ToReg(Rax, FALSE)));
                 instrs.push(JumpI(Jump::E(else_label.clone())));
                 // Then
@@ -452,7 +482,7 @@ pub fn compile_expr(e: &Expr, co: &Context, com: &mut ContextMut) -> Vec<Instr> 
                     x.to_string(),
                     VarEnv {
                         offset: old_var.offset,
-                        is_bool: com.result_is_bool,
+                        vtype: com.result_type,
                         in_heap: old_var.in_heap,
                     },
                 );
@@ -620,6 +650,7 @@ pub fn compile_expr(e: &Expr, co: &Context, com: &mut ContextMut) -> Vec<Instr> 
         }
         Expr::Define(_, _) => panic!("define cannot be compiled"),
         Expr::FnDefn(_, _, _) => panic!("Invalid: fn defn cannot be compiled here"),
+        _ => {todo!("not implemented")},
     }
     return instrs;
 }
