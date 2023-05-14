@@ -6,42 +6,72 @@ extern "C" {
     // it does not add an underscore in front of the name.
     // Courtesy of Max New (https://maxsnew.com/teaching/eecs-483-fa22/hw_adder_assignment.html)
     #[link_name = "\x01our_code_starts_here"]
-    fn our_code_starts_here(input: u64) -> u64;
+    fn our_code_starts_here(input: u64) -> i64;
 }
 
 #[export_name = "\x01snek_error"]
 pub extern "C" fn snek_error(errcode: i64) {
     // print error message according to writeup
-    eprintln!("an error ocurred {errcode}: {}", match errcode {
-        1 => "invalid representation",
-        i if i >= 20 && i <= 29  => "invalid argument",
-        i if i >= 30 && i <= 39 => "overflow",
-        _ => "",
-    });
+    eprintln!(
+        "an error ocurred {errcode}: {}",
+        match errcode {
+            1 => "invalid representation",
+            i if i >= 20 && i <= 29 => "invalid argument",
+            i if i >= 30 && i <= 39 => "overflow",
+            _ => "",
+        }
+    );
     std::process::exit(1);
 }
 
 fn parse_input(input: &str) -> u64 {
     // parse the input string into internal value representation
     match input {
-        "true" => 3,
-        "false" | "" => 1,
+        "true" => 7,
+        "false" | "" => 3,
         _ => (input.parse::<i64>().expect("Invalid") as u64) << 1,
     }
 }
 
-#[export_name = "\x01snek_print"]
-pub extern "C" fn snek_print(i: u64) -> u64 {
-    if i % 2 == 0 {
-        println!("{}", i as i64 / 2);
-    } else if i == 1 {
-        println!("false");
-    } else if i == 3 {
-        println!("true");
+fn snek_str(val: i64, seen: &mut Vec<i64>) -> String {
+    if val == 7 {
+        "true".to_string()
+    } else if val == 3 {
+        "false".to_string()
+    } else if val % 2 == 0 {
+        format!("{}", val >> 1)
+    } else if val == 1 {
+        "nil".to_string()
+    } else if val & 1 == 1 {
+        if seen.contains(&val) {
+            return "(list <cyclic>)".to_string();
+        }
+        seen.push(val);
+        let addr = (val - 1) as *const i64;
+        let count = unsafe { *addr } as usize;
+        let mut v: Vec<i64> = vec![0; count];
+        for i in 1..=count {
+            v[i - 1] = unsafe { *addr.offset(i as isize) };
+        }
+        let result = format!(
+            "(list {})",
+            v.iter()
+                .map(|x| snek_str(*x, seen))
+                .fold(String::new(), |acc, x| acc + " " + &x)
+        );
+        seen.pop();
+        return result;
     } else {
-        snek_error(1);
+        format!("Unknown value: {}", val)
     }
-    i
+}
+
+#[no_mangle]
+#[export_name = "\x01snek_print"]
+fn snek_print(i: i64) -> i64 {
+    let mut seen = Vec::<i64>::new();
+    println!("{}", snek_str(i, &mut seen));
+    return i;
 }
 
 fn main() {
@@ -49,6 +79,6 @@ fn main() {
     let input = if args.len() == 2 { &args[1] } else { "false" };
     let input = parse_input(&input);
 
-    let i: u64 = unsafe { our_code_starts_here(input) };
+    let i: i64 = unsafe { our_code_starts_here(input) };
     snek_print(i);
 }

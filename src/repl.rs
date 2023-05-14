@@ -62,7 +62,7 @@ fn parse_input(input: &str) -> (i64, Type) {
         "false" | "" => (1, Type::Bool),
         x => {
             let x = x.parse::<i64>().expect("Invalid") << 1;
-            if x & 1 == 0 { (x, Type::Int) } else { (x, Type::Pair(None)) }
+            if x & 1 == 0 { (x, Type::Int) } else { (x, Type::List(None)) }
         },
     }
 }

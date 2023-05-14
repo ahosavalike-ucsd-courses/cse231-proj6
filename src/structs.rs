@@ -115,7 +115,7 @@ impl FunEnv {
 pub enum Type {
     Int,
     Bool,
-    Pair(Option<u64>),
+    List(Option<u64>),
 }
 
 #[derive(Clone, Debug)]

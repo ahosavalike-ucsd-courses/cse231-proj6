@@ -10,8 +10,8 @@ use dynasmrt::DynamicLabel;
 use im::hashmap;
 use im::HashMap;
 
-const TRUE: Arg64 = Imm(3);
-const FALSE: Arg64 = Imm(1);
+const TRUE: Arg64 = Imm(7);
+const FALSE: Arg64 = Imm(3);
 
 pub fn depth(e: &Expr) -> i32 {
     match e {
@@ -151,6 +151,7 @@ pub fn compile_expr(e: &Expr, co: &Context, com: &mut ContextMut) -> Vec<Instr> 
     let snek_error: Label = Label::new(Some("snek_error_stub"));
 
     match e {
+        Expr::Nil => instrs.push(Mov(co.src_to_target(Imm(1)))),
         Expr::Num(n) => {
             let (i, overflow) = n.overflowing_mul(2);
             if overflow {
@@ -303,6 +304,7 @@ pub fn compile_expr(e: &Expr, co: &Context, com: &mut ContextMut) -> Vec<Instr> 
             });
 
             match op {
+                // TODO: Implement Index
                 Op2::Equal => {
                     let needs_check = ltype.is_none() || rtype.is_none();
                     if ltype.is_some() && rtype.is_some() && ltype != rtype {
@@ -333,19 +335,18 @@ pub fn compile_expr(e: &Expr, co: &Context, com: &mut ContextMut) -> Vec<Instr> 
                     // Check if Rax and mem is a number
                     if match ltype {
                         Some(Int) | None => false,
-                        _ => true
+                        _ => true,
                     } || match rtype {
                         Some(Int) | None => false,
-                        _ => true
+                        _ => true,
                     } {
                         instrs.push(Mov(ToReg(Rdi, Imm(23)))); // invalid argument
                         instrs.push(JumpI(Jump::U(snek_error.clone())));
-                        com.result_type =
-                            Some(if let Op2::Plus | Op2::Minus | Op2::Times = op {
-                                Int
-                            } else {
-                                Bool
-                            });
+                        com.result_type = Some(if let Op2::Plus | Op2::Minus | Op2::Times = op {
+                            Int
+                        } else {
+                            Bool
+                        });
                         return instrs;
                     }
 
@@ -650,7 +651,9 @@ pub fn compile_expr(e: &Expr, co: &Context, com: &mut ContextMut) -> Vec<Instr> 
         }
         Expr::Define(_, _) => panic!("define cannot be compiled"),
         Expr::FnDefn(_, _, _) => panic!("Invalid: fn defn cannot be compiled here"),
-        _ => {todo!("not implemented")},
+        _ => {
+            todo!("not implemented")
+        }
     }
     return instrs;
 }
