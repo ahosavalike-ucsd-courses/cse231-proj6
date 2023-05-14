@@ -202,7 +202,6 @@ pub fn repl(eval_input: Option<(&Expr, &str)>) {
             }
         });
 
-
         let heap_used_before = com.heap_used as i64;
         // Eval with dynasm
         if let Ok(res) = res {
