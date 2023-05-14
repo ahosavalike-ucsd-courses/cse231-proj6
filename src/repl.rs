@@ -62,8 +62,12 @@ fn parse_input(input: &str) -> (i64, Type) {
         "false" | "" => (1, Type::Bool),
         x => {
             let x = x.parse::<i64>().expect("Invalid") << 1;
-            if x & 1 == 0 { (x, Type::Int) } else { (x, Type::List(None)) }
-        },
+            if x & 1 == 0 {
+                (x, Type::Int)
+            } else {
+                (x, Type::List(None))
+            }
+        }
     }
 }
 
@@ -114,7 +118,10 @@ pub fn repl(eval_input: Option<(&Expr, &str)>) {
     // Eval
     if let Some((eval_in, input)) = eval_input {
         add_interface_calls(&mut ops, &mut labels, true);
-        let mut instrs: Vec<Instr> = vec![];
+        let mut instrs: Vec<Instr> = vec![Instr::Mov(MovArgs::ToReg(
+            Reg::R15,
+            Arg64::Imm64(define_stack.as_mut_ptr() as i64),
+        ))];
         // Setup input
         let (input, is_bool) = parse_input(input);
         instrs.push(Instr::Mov(MovArgs::ToReg(Reg::Rdi, Arg64::Imm64(input))));
@@ -125,7 +132,7 @@ pub fn repl(eval_input: Option<(&Expr, &str)>) {
             Some(&mut com),
             Some(is_bool),
         ));
-        print_result(eval(&mut ops, &mut labels, &mut instrs, define_stack.as_mut_ptr()));
+        print_result(eval(&mut ops, &mut labels, &mut instrs));
         return;
     }
 
@@ -188,15 +195,15 @@ pub fn repl(eval_input: Option<(&Expr, &str)>) {
                     depth(&expr),
                     compile_func_defns(&vec![expr], com_discard),
                 ),
-                _ => CompileResponse::Expr(compile_expr_aligned(
-                    &expr,
-                    Some(&co),
-                    Some(com_discard),
-                    None,
-                )),
+                _ => CompileResponse::Expr(
+                    compile_expr_aligned(&expr, Some(&co), Some(com_discard), None),
+                    com_discard.heap_used,
+                ),
             }
         });
 
+
+        let heap_used_before = com.heap_used as i64;
         // Eval with dynasm
         if let Ok(res) = res {
             let instrs = &mut match res {
@@ -232,9 +239,18 @@ pub fn repl(eval_input: Option<(&Expr, &str)>) {
                     instrs
                 }
                 CompileResponse::FnDefn(f, a, depth, instrs) => {
-                    com.fns.insert(f.clone(), FunEnv { argc: a.len() as i32, depth });
-                    labels.insert(Label::new(Some(&format!("fun_{f}"))), ops.new_dynamic_label());
-                    
+                    com.fns.insert(
+                        f.clone(),
+                        FunEnv {
+                            argc: a.len() as i32,
+                            depth,
+                        },
+                    );
+                    labels.insert(
+                        Label::new(Some(&format!("fun_{f}"))),
+                        ops.new_dynamic_label(),
+                    );
+
                     // dynasm!(ops; .arch x64; => fun_lbl);
                     instrs_to_asm(&instrs, &mut ops, &mut labels);
                     if let Err(e) = ops.commit() {
@@ -245,14 +261,25 @@ pub fn repl(eval_input: Option<(&Expr, &str)>) {
                         println!("{i:?}");
                     }
                     continue;
-                },
-                CompileResponse::Expr(instrs) => instrs,
+                }
+                CompileResponse::Expr(instrs, heap_used) => {
+                    com.heap_used = heap_used;
+                    instrs
+                }
             };
 
             for i in &*instrs {
                 println!("{i:?}");
             }
 
+            // Add heap reference
+            instrs.insert(
+                0,
+                Instr::Mov(MovArgs::ToReg(
+                    Reg::R15,
+                    Arg64::Imm64(define_stack.as_mut_ptr() as i64 + heap_used_before),
+                )),
+            );
             print_result(eval(&mut ops, &mut labels, instrs));
         };
 

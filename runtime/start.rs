@@ -6,7 +6,7 @@ extern "C" {
     // it does not add an underscore in front of the name.
     // Courtesy of Max New (https://maxsnew.com/teaching/eecs-483-fa22/hw_adder_assignment.html)
     #[link_name = "\x01our_code_starts_here"]
-    fn our_code_starts_here(input: u64) -> i64;
+    fn our_code_starts_here(input: u64, buffer: *mut u64) -> i64;
 }
 
 #[export_name = "\x01snek_error"]
@@ -57,7 +57,8 @@ fn snek_str(val: i64, seen: &mut Vec<i64>) -> String {
             "(list {})",
             v.iter()
                 .map(|x| snek_str(*x, seen))
-                .fold(String::new(), |acc, x| acc + " " + &x)
+                .collect::<Vec<String>>()
+                .join(" ")
         );
         seen.pop();
         return result;
@@ -78,7 +79,8 @@ fn main() {
     let args: Vec<String> = env::args().collect();
     let input = if args.len() == 2 { &args[1] } else { "false" };
     let input = parse_input(&input);
+    let mut mem = vec![0;16384];
 
-    let i: i64 = unsafe { our_code_starts_here(input) };
+    let i: i64 = unsafe { our_code_starts_here(input, mem.as_mut_ptr()) };
     snek_print(i);
 }

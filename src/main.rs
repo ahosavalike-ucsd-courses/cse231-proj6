@@ -39,7 +39,8 @@ fn main() -> std::io::Result<()> {
 
     let com = &mut ContextMut::new();
     let funcs = compile_func_defns(&funcs, com);
-    let result = compile_expr_aligned(&expr, None, Some(com), None);
+    let co = &Context::new(None).modify_si(1);
+    let result = compile_expr_aligned(&expr, Some(co), Some(com), None);
 
     let asm_program = format!(
         "section .text
@@ -55,6 +56,7 @@ snek_error_stub:
 
 ; Main code
 our_code_starts_here:
+ mov r15, rsi   ; 2nd argument is available heap space address
 {}
 ret
 ",

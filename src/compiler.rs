@@ -649,11 +649,59 @@ pub fn compile_expr(e: &Expr, co: &Context, com: &mut ContextMut) -> Vec<Instr> 
                 co.rax_to_target(&mut instrs);
             }
         }
+        Expr::List(es) => {
+            for (i, e) in es.iter().enumerate() {
+                // Result in main's stack
+                instrs.extend(compile_expr(
+                    e,
+                    &co.modify(
+                        Some(co.si + i as i32),
+                        None,
+                        None,
+                        Some(Some(MemRef {
+                            reg: Rsp,
+                            offset: co.si + i as i32,
+                        })),
+                        // List items are not tail positions
+                        Some(false),
+                    ),
+                    com,
+                ));
+            }
+
+            // Length as the first value
+            instrs.push(Mov(ToMem(
+                MemRef {
+                    reg: R15,
+                    offset: 0,
+                },
+                Imm64(es.len() as i64),
+            )));
+            for i in 0..es.len() as i32 {
+                instrs.push(Mov(ToReg(
+                    Rax,
+                    Mem(MemRef {
+                        reg: Rsp,
+                        offset: co.si + i,
+                    }),
+                )));
+                instrs.push(Mov(ToMem(
+                    MemRef {
+                        reg: R15,
+                        offset: i + 1, // 1st word is length
+                    },
+                    OReg(Rax),
+                )));
+            }
+            // Set target to address and tag with 1
+            instrs.push(Mov(co.src_to_target(OReg(R15))));
+            instrs.push(Add(co.src_to_target(Imm(1))));
+            // Move R15
+            instrs.push(Add(ToReg(R15, Imm64(8 * (1 + es.len() as i64)))));
+            com.heap_used += 1 + es.len() as u64;
+        }
         Expr::Define(_, _) => panic!("define cannot be compiled"),
         Expr::FnDefn(_, _, _) => panic!("Invalid: fn defn cannot be compiled here"),
-        _ => {
-            todo!("not implemented")
-        }
     }
     return instrs;
 }

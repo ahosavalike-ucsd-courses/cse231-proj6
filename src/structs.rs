@@ -125,6 +125,7 @@ pub struct ContextMut {
     pub result_type: Option<Type>,
     pub fns: HashMap<String, FunEnv>,
     pub depth: i32,
+    pub heap_used: u64,
 }
 
 impl ContextMut {
@@ -135,6 +136,7 @@ impl ContextMut {
             result_type: None,
             fns: hashmap! {},
             depth: 0,
+            heap_used: 0,
         }
     }
     pub fn index_used(&mut self) {
@@ -652,5 +654,5 @@ impl Instr {
 pub enum CompileResponse{
     Define(String, Vec<Instr>, Option<Type>),
     FnDefn(String, Vec<String>, i32, Vec<Instr>),
-    Expr(Vec<Instr>),
+    Expr(Vec<Instr>, u64),
 }
