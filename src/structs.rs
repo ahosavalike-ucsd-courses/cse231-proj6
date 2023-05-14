@@ -86,15 +86,15 @@ impl fmt::Display for Label {
 pub struct VarEnv {
     pub offset: i32,
     pub vtype: Option<Type>,
-    pub in_heap: bool,
+    pub defined: bool,
 }
 
 impl VarEnv {
-    pub fn new(offset: i32, vtype: Option<Type>, in_heap: bool) -> VarEnv {
+    pub fn new(offset: i32, vtype: Option<Type>, defined: bool) -> VarEnv {
         VarEnv {
             offset,
             vtype,
-            in_heap,
+            defined,
         }
     }
 }
@@ -161,8 +161,8 @@ impl ContextMut {
 #[derive(Clone, Debug)]
 pub struct Context {
     pub si: i32,
-    pub heap: Option<*mut u64>,
-    pub hi: i32,
+    pub define_stack: Option<*mut u64>,
+    pub dsi: i32,
     pub env: HashMap<String, VarEnv>,
     pub label: Label,
     pub target: Option<MemRef>,
@@ -170,11 +170,11 @@ pub struct Context {
 }
 
 impl Context {
-    pub fn new(heap: Option<*mut u64>) -> Context {
+    pub fn new(define_stack: Option<*mut u64>) -> Context {
         Context {
             si: 0,
-            heap,
-            hi: 0,
+            define_stack,
+            dsi: 0,
             env: hashmap! {},
             label: Label::new(None),
             target: None,
@@ -191,8 +191,8 @@ impl Context {
     ) -> Context {
         Context {
             si: si.unwrap_or(self.si),
-            heap: self.heap,
-            hi: self.hi,
+            define_stack: self.define_stack,
+            dsi: self.dsi,
             env: env.unwrap_or(self.env.clone()),
             label: label.unwrap_or(self.label.clone()),
             target: target.unwrap_or(self.target.clone()),
@@ -245,8 +245,8 @@ impl Context {
             Some(m) => instrs.push(Mov(ToMem(m.clone(), OReg(Rax)))),
         }
     }
-    pub fn get_heap(&self) -> i64 {
-        self.heap.expect("No heap found") as i64
+    pub fn get_define_stack(&self) -> i64 {
+        self.define_stack.expect("No heap found") as i64
     }
 }
 
@@ -369,6 +369,7 @@ pub enum Reg {
     Rbx,
     Rsp,
     Rdi,
+    R15,
 }
 use Reg::*;
 
@@ -380,6 +381,7 @@ impl fmt::Display for Reg {
             Rbx => write!(f, "rbx"),
             Rsp => write!(f, "rsp"),
             Rdi => write!(f, "rdi"),
+            R15 => write!(f, "r15"),
         }
     }
 }
@@ -393,6 +395,7 @@ impl Reg {
             Rbx => 3,
             Rsp => 4,
             Rdi => 7,
+            R15 => 15,
         }
     }
 }

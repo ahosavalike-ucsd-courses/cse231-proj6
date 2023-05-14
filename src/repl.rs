@@ -102,10 +102,10 @@ fn eval(
 }
 
 pub fn repl(eval_input: Option<(&Expr, &str)>) {
-    // Initial heap size low to see reallocations
-    let mut heap: Vec<u64> = vec![0; 1];
+    // Initial define stack size low to see reallocations
+    let mut define_stack: Vec<u64> = vec![0; 1];
 
-    let mut co = Context::new(Some(heap.as_mut_ptr())).modify_si(1);
+    let mut co = Context::new(Some(define_stack.as_mut_ptr())).modify_si(1);
     let mut com = ContextMut::new();
 
     let mut ops = Assembler::new().unwrap();
@@ -125,7 +125,7 @@ pub fn repl(eval_input: Option<(&Expr, &str)>) {
             Some(&mut com),
             Some(is_bool),
         ));
-        print_result(eval(&mut ops, &mut labels, &instrs));
+        print_result(eval(&mut ops, &mut labels, &mut instrs, define_stack.as_mut_ptr()));
         return;
     }
 
@@ -207,8 +207,8 @@ pub fn repl(eval_input: Option<(&Expr, &str)>) {
                         VarEnv::new(
                             if !co.env.contains_key(&x) {
                                 // Increment heap index and extend heap if overflow
-                                co.hi += 1;
-                                -co.hi + 1
+                                co.dsi += 1;
+                                -co.dsi + 1
                             } else {
                                 co.env.get(&x).unwrap().offset
                             },
@@ -220,7 +220,7 @@ pub fn repl(eval_input: Option<(&Expr, &str)>) {
                     // Move RAX to heap
                     instrs.push(Instr::Mov(MovArgs::ToReg(
                         Reg::Rbx,
-                        Arg64::Imm64(co.get_heap()),
+                        Arg64::Imm64(co.get_define_stack()),
                     )));
                     instrs.push(Instr::Mov(MovArgs::ToMem(
                         MemRef {
@@ -256,10 +256,10 @@ pub fn repl(eval_input: Option<(&Expr, &str)>) {
             print_result(eval(&mut ops, &mut labels, instrs));
         };
 
-        // Increase heap if needed
-        if co.hi as usize >= heap.len() {
-            heap.resize(2 * heap.len(), 0);
-            co.heap = Some(heap.as_mut_ptr());
+        // Increase define stack if needed
+        if co.dsi as usize >= define_stack.len() {
+            define_stack.resize(2 * define_stack.len(), 0);
+            co.define_stack = Some(define_stack.as_mut_ptr());
         }
     }
 }

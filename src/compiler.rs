@@ -87,7 +87,7 @@ pub fn compile_func_defns(fns: &Vec<Expr>, com: &mut ContextMut) -> Vec<Instr> {
 
             for (i, v) in vars.iter().enumerate() {
                 let existing = co.env.get(v.as_str());
-                if existing.is_some() && !existing.unwrap().in_heap {
+                if existing.is_some() && !existing.unwrap().defined {
                     panic!("duplicate parameter binding in definition");
                 }
                 co.env
@@ -188,8 +188,8 @@ pub fn compile_expr(e: &Expr, co: &Context, com: &mut ContextMut) -> Vec<Instr> 
                 None => panic!("Unbound variable identifier {x}"),
             };
 
-            let reg = if venv.in_heap {
-                instrs.push(Mov(ToReg(Rbx, Imm64(co.get_heap()))));
+            let reg = if venv.defined {
+                instrs.push(Mov(ToReg(Rbx, Imm64(co.get_define_stack()))));
                 Rbx
             } else {
                 Rsp
@@ -484,7 +484,7 @@ pub fn compile_expr(e: &Expr, co: &Context, com: &mut ContextMut) -> Vec<Instr> 
                     VarEnv {
                         offset: old_var.offset,
                         vtype: com.result_type,
-                        in_heap: old_var.in_heap,
+                        defined: old_var.defined,
                     },
                 );
                 &com.env
@@ -494,8 +494,8 @@ pub fn compile_expr(e: &Expr, co: &Context, com: &mut ContextMut) -> Vec<Instr> 
             .get(x)
             .unwrap();
 
-            let reg = if venv.in_heap {
-                instrs.push(Mov(ToReg(Rbx, Imm64(co.get_heap()))));
+            let reg = if venv.defined {
+                instrs.push(Mov(ToReg(Rbx, Imm64(co.get_define_stack()))));
                 Rbx
             } else {
                 Rsp
