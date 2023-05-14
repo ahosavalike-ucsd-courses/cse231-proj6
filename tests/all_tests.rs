@@ -313,6 +313,11 @@ success_tests! {
 		expected: "true",
 	},
 	{
+		name: list1_2,
+		file: "list1.snek",
+		expected: "(list 1 2 (list 1 2 3))",
+	},
+	{
 		name: loop_expr1_17,
 		file: "loop_expr1.snek",
 		expected: "-6",

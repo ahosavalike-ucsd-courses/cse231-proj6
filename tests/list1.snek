@@ -1,0 +1,3 @@
+(fun (inc a) (add1 a))
+(list (+ (* 4 2) -7) (inc 1) (list 1 2 3))
+; (output "(list 1 2 (list 1 2 3))")
