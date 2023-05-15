@@ -207,14 +207,14 @@ pub fn compile_expr(e: &Expr, co: &Context, com: &mut ContextMut) -> Vec<Instr> 
         Expr::UnOp(op, subexpr) => {
             // UnOp operand cannot be a tail position
             let co = &co.modify_tail(false);
-            instrs.extend(compile_expr(subexpr, co, com));
+            instrs.extend(compile_expr(subexpr, &co.modify_target(None), com));
 
             match op {
                 Op1::Add1 => {
                     // Check if Rax is number
                     match com.result_type {
                         None => {
-                            instrs.push(Test(co.src_to_target(Imm(1))));
+                            instrs.push(Test(ToReg(Rax, Imm(1))));
                             instrs.push(Mov(ToReg(Rdi, Imm(20)))); // invalid argument
                             instrs.push(JumpI(Jump::Nz(snek_error.clone())));
                         }
@@ -226,7 +226,7 @@ pub fn compile_expr(e: &Expr, co: &Context, com: &mut ContextMut) -> Vec<Instr> 
                             return instrs;
                         }
                     }
-                    instrs.push(Add(co.src_to_target(Imm(2))));
+                    instrs.push(Add(ToReg(Rax, Imm(2))));
                     // Check overflow
                     instrs.push(Mov(ToReg(Rdi, Imm(30))));
                     instrs.push(JumpI(Jump::O(snek_error)));
@@ -236,7 +236,7 @@ pub fn compile_expr(e: &Expr, co: &Context, com: &mut ContextMut) -> Vec<Instr> 
                     // Check if Rax is number
                     match com.result_type {
                         None => {
-                            instrs.push(Test(co.src_to_target(Imm(1))));
+                            instrs.push(Test(ToReg(Rax, Imm(1))));
                             instrs.push(Mov(ToReg(Rdi, Imm(20)))); // invalid argument
                             instrs.push(JumpI(Jump::Nz(snek_error.clone())));
                         }
@@ -248,35 +248,34 @@ pub fn compile_expr(e: &Expr, co: &Context, com: &mut ContextMut) -> Vec<Instr> 
                             return instrs;
                         }
                     }
-                    instrs.push(Sub(co.src_to_target(Imm(2))));
+                    instrs.push(Sub(ToReg(Rax, Imm(2))));
                     // Check overflow
                     instrs.push(Mov(ToReg(Rdi, Imm(30))));
                     instrs.push(JumpI(Jump::O(snek_error)));
                     com.result_type = Some(Int);
                 }
                 Op1::IsBool => {
-                    instrs.push(And(co.src_to_target(Imm(1))));
+                    instrs.push(And(ToReg(Rax, Imm(1))));
                     instrs.push(Mov(ToReg(Rax, TRUE))); // Set true
                     instrs.push(Mov(ToReg(Rbx, FALSE)));
                     instrs.push(CMovI(CMov::Z(Rax, OReg(Rbx)))); // Set false if zero
-                    co.rax_to_target(&mut instrs);
 
                     com.result_type = Some(Bool);
                 }
                 Op1::IsNum => {
-                    instrs.push(And(co.src_to_target(Imm(1))));
+                    instrs.push(And(ToReg(Rax, Imm(1))));
                     instrs.push(Mov(ToReg(Rax, FALSE))); // Set false
                     instrs.push(Mov(ToReg(Rbx, TRUE)));
                     instrs.push(CMovI(CMov::Z(Rax, OReg(Rbx)))); // Set true if zero
-                    co.rax_to_target(&mut instrs);
 
                     com.result_type = Some(Bool);
                 }
                 Op1::Print => {
-                    instrs.extend(co.target_to_reg(Rdi));
+                    instrs.push(Mov(ToReg(Rdi, OReg(Rax))));
                     instrs.push(Call(Label::new(Some("snek_print"))));
                 }
             }
+            co.rax_to_target(&mut instrs);
         }
         Expr::BinOp(op, left, right) => {
             // BinOp operands cannot be a tail position

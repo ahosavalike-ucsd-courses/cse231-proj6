@@ -226,15 +226,6 @@ impl Context {
         n.tail = tail;
         n
     }
-    pub fn target_to_reg(&self, dst: Reg) -> Vec<Instr> {
-        match &self.target {
-            None => match &dst {
-                Rax => vec![],
-                r => vec![Mov(ToReg(r.clone(), OReg(Rax)))],
-            },
-            Some(m) => vec![Mov(ToReg(dst, Mem(m.clone())))],
-        }
-    }
     pub fn src_to_target(&self, src: Arg64) -> MovArgs {
         match &self.target {
             None => ToReg(Rax, src),
