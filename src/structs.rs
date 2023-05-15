@@ -247,8 +247,8 @@ impl Context {
 #[allow(dead_code)]
 pub enum Jump {
     U(Label),
-    Ne(Label),
-    Nz(Label),
+    NE(Label),
+    NZ(Label),
     E(Label),
     Z(Label),
     O(Label),
@@ -258,7 +258,7 @@ impl fmt::Display for Jump {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
             Jump::U(x) => write!(f, "jmp {}", x),
-            Jump::Ne(x) | Jump::Nz(x) => write!(f, "jne {}", x),
+            Jump::NE(x) | Jump::NZ(x) => write!(f, "jne {}", x),
             Jump::E(x) | Jump::Z(x) => write!(f, "je {}", x),
             Jump::O(x) => write!(f, "jo {}", x),
         }
@@ -269,7 +269,7 @@ impl Jump {
     fn asm(&self, ops: &mut dynasmrt::x64::Assembler, lbls: &mut HashMap<Label, DynamicLabel>) {
         match self {
             Jump::U(l) => dynasm!(ops; .arch x64; jmp =>*lbls.get(l).unwrap()),
-            Jump::Ne(l) | Jump::Nz(l) => dynasm!(ops; .arch x64; jne =>*lbls.get(l).unwrap()),
+            Jump::NE(l) | Jump::NZ(l) => dynasm!(ops; .arch x64; jne =>*lbls.get(l).unwrap()),
             Jump::E(l) | Jump::Z(l) => dynasm!(ops; .arch x64; je =>*lbls.get(l).unwrap()),
             Jump::O(l) => dynasm!(ops; .arch x64; jo =>*lbls.get(l).unwrap()),
         }

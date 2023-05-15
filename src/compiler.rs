@@ -216,7 +216,7 @@ pub fn compile_expr(e: &Expr, co: &Context, com: &mut ContextMut) -> Vec<Instr> 
                         None => {
                             instrs.push(Test(ToReg(Rax, Imm(1))));
                             instrs.push(Mov(ToReg(Rdi, Imm(20)))); // invalid argument
-                            instrs.push(JumpI(Jump::Nz(snek_error.clone())));
+                            instrs.push(JumpI(Jump::NZ(snek_error.clone())));
                         }
                         Some(Int) => {}
                         _ => {
@@ -238,7 +238,7 @@ pub fn compile_expr(e: &Expr, co: &Context, com: &mut ContextMut) -> Vec<Instr> 
                         None => {
                             instrs.push(Test(ToReg(Rax, Imm(1))));
                             instrs.push(Mov(ToReg(Rdi, Imm(20)))); // invalid argument
-                            instrs.push(JumpI(Jump::Nz(snek_error.clone())));
+                            instrs.push(JumpI(Jump::NZ(snek_error.clone())));
                         }
                         Some(Int) => {}
                         _ => {
@@ -312,7 +312,7 @@ pub fn compile_expr(e: &Expr, co: &Context, com: &mut ContextMut) -> Vec<Instr> 
                     let needs_check = ltype.is_none() || rtype.is_none();
                     if ltype.is_some() && rtype.is_some() && ltype != rtype {
                         instrs.push(Mov(ToReg(Rdi, Imm(21)))); // invalid argument
-                        instrs.push(JumpI(Jump::Nz(snek_error.clone())));
+                        instrs.push(JumpI(Jump::NZ(snek_error.clone())));
                         com.result_type = Some(Bool);
                         return instrs;
                     }
@@ -330,7 +330,7 @@ pub fn compile_expr(e: &Expr, co: &Context, com: &mut ContextMut) -> Vec<Instr> 
                         instrs.push(Pop(Rbx));
                         instrs.push(Test(ToReg(Rbx, Imm(1))));
                         instrs.push(Mov(ToReg(Rdi, Imm(22)))); // invalid argument
-                        instrs.push(JumpI(Jump::Nz(snek_error.clone())));
+                        instrs.push(JumpI(Jump::NZ(snek_error.clone())));
                     }
                     com.result_type = Some(Bool);
                 }
@@ -356,12 +356,12 @@ pub fn compile_expr(e: &Expr, co: &Context, com: &mut ContextMut) -> Vec<Instr> 
                     if ltype.is_none() {
                         instrs.push(Test(ToReg(Rax, Imm(1))));
                         instrs.push(Mov(ToReg(Rdi, Imm(24)))); // invalid argument
-                        instrs.push(JumpI(Jump::Nz(snek_error.clone())));
+                        instrs.push(JumpI(Jump::NZ(snek_error.clone())));
                     }
                     if rtype.is_none() {
                         instrs.push(Test(ToReg(Rbx, Imm(1))));
                         instrs.push(Mov(ToReg(Rdi, Imm(25)))); // invalid argument
-                        instrs.push(JumpI(Jump::Nz(snek_error.clone())));
+                        instrs.push(JumpI(Jump::NZ(snek_error.clone())));
                     }
 
                     if let Op2::Plus | Op2::Minus | Op2::Times = op {
