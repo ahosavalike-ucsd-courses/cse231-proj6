@@ -21,7 +21,7 @@ pub fn depth(e: &Expr) -> i32 {
         Expr::Boolean(_) => 0,
         Expr::UnOp(_, e) => depth(e),
         // Right to left evaluation order
-        Expr::BinOp(_, e1, e2) => depth(e2).max(depth(e1) + 1),
+        Expr::BinOp(_, e1, e2) => depth(e1).max(depth(e2) + 1),
         Expr::Let(bindings, e) => bindings
             .iter()
             .enumerate()
@@ -281,27 +281,31 @@ pub fn compile_expr(e: &Expr, co: &Context, com: &mut ContextMut) -> Vec<Instr> 
         Expr::BinOp(op, left, right) => {
             // BinOp operands cannot be a tail position
             let co = &co.modify_tail(false);
+
             instrs.extend(compile_expr(
-                right,
+                left,
                 &co.modify_target(Some(MemRef {
                     reg: Rsp,
                     offset: co.si,
                 })),
                 com,
             ));
-            let rtype = com.result_type;
-
-            instrs.extend(compile_expr(
-                left,
-                &co.modify(Some(co.si + 1), None, None, Some(None), None),
-                com,
-            ));
             let ltype = com.result_type;
 
-            let mem = Mem(MemRef {
-                reg: Rsp,
-                offset: co.si,
-            });
+            instrs.extend(compile_expr(
+                right,
+                &co.modify_target(None).modify_si(co.si + 1),
+                com,
+            ));
+            let rtype = com.result_type;
+            instrs.push(Mov(ToReg(Rbx, OReg(Rax))));
+            instrs.push(Mov(ToReg(
+                Rax,
+                Mem(MemRef {
+                    reg: Rsp,
+                    offset: co.si,
+                }),
+            )));
 
             match op {
                 // TODO: Implement Index
@@ -314,7 +318,7 @@ pub fn compile_expr(e: &Expr, co: &Context, com: &mut ContextMut) -> Vec<Instr> 
                         return instrs;
                     }
                     // Check equality with sub instead of cmp
-                    instrs.push(Sub(ToReg(Rax, mem)));
+                    instrs.push(Sub(ToReg(Rax, OReg(Rbx))));
                     if needs_check {
                         instrs.push(Push(Rax)); // Push to stack for checking type later
                     }
@@ -356,11 +360,8 @@ pub fn compile_expr(e: &Expr, co: &Context, com: &mut ContextMut) -> Vec<Instr> 
                         instrs.push(JumpI(Jump::Nz(snek_error.clone())));
                     }
                     if rtype.is_none() {
-                        instrs.push(Test(ToMem(
-                            MemRef {
-                                reg: Rsp,
-                                offset: co.si,
-                            },
+                        instrs.push(Test(ToReg(
+                            Rbx,
                             Imm(1),
                         )));
                         instrs.push(Mov(ToReg(Rdi, Imm(25)))); // invalid argument
@@ -369,11 +370,11 @@ pub fn compile_expr(e: &Expr, co: &Context, com: &mut ContextMut) -> Vec<Instr> 
 
                     if let Op2::Plus | Op2::Minus | Op2::Times = op {
                         match op {
-                            Op2::Plus => instrs.push(Add(ToReg(Rax, mem))),
-                            Op2::Minus => instrs.push(Sub(ToReg(Rax, mem))),
+                            Op2::Plus => instrs.push(Add(ToReg(Rax, OReg(Rbx)))),
+                            Op2::Minus => instrs.push(Sub(ToReg(Rax, OReg(Rbx)))),
                             Op2::Times => {
                                 instrs.push(Sar(Rax, 1));
-                                instrs.push(Mul(Rax, mem));
+                                instrs.push(Mul(Rax, OReg(Rbx)));
                             }
                             _ => panic!("should not happen"),
                         }
@@ -381,7 +382,7 @@ pub fn compile_expr(e: &Expr, co: &Context, com: &mut ContextMut) -> Vec<Instr> 
                         instrs.push(JumpI(Jump::O(snek_error)));
                         com.result_type = Some(Int);
                     } else {
-                        instrs.push(Cmp(ToReg(Rax, mem)));
+                        instrs.push(Cmp(ToReg(Rax, OReg(Rbx))));
                         instrs.push(Mov(ToReg(Rax, FALSE))); // Set false
                         instrs.push(Mov(ToReg(Rbx, TRUE)));
                         match op {
