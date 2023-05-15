@@ -187,6 +187,30 @@ success_tests! {
 		expected: "true",
 	},
 	{
+		name: list4_2,
+		file: "list4.snek",
+		input: "1",
+		expected: "false",
+	},
+	{
+		name: list4_3,
+		file: "list4.snek",
+		input: "2",
+		expected: "false",
+	},
+	{
+		name: list4_4,
+		file: "list4.snek",
+		input: "3",
+		expected: "true",
+	},
+	{
+		name: list4_5,
+		file: "list4.snek",
+		input: "4",
+		expected: "false",
+	},
+	{
 		name: isnum_1,
 		file: "isnum.snek",
 		expected: "false",
@@ -703,6 +727,11 @@ runtime_error_tests! {
 	{
 		name: invalid_argument_fail4_1,
 		file: "invalid_argument_fail4.snek",
+		expected: "invalid argument",
+	},
+	{
+		name: list4_1,
+		file: "list4.snek",
 		expected: "invalid argument",
 	},
 	{

@@ -1,0 +1,6 @@
+(let ((x (list 1 2 nil 4))) (= nil (index x input)))
+; (dynamic "invalid argument")
+; ((input 1) (output false))
+; ((input 2) (output false))
+; ((input 3) (output true))
+; ((input 4) (output false))
