@@ -247,7 +247,7 @@ success_tests! {
 		name: factr_2,
 		file: "factr.snek",
 		input: "10",
-		expected: "1\n1\n2\n2\n3\n6\n4\n24\n5\n120\n6\n720\n7\n5040\n8\n40320\n9\n362880\n10\n3628800",
+		expected: "10\n9\n8\n7\n6\n5\n4\n3\n2\n1\n1\n2\n6\n24\n120\n720\n5040\n40320\n362880\n3628800",
 	},
 	{
 		name: shadowed_binding_succ4_1,
