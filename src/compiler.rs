@@ -12,6 +12,7 @@ use im::HashMap;
 
 const TRUE: Arg64 = Imm(7);
 const FALSE: Arg64 = Imm(3);
+const NIL: Arg64 = Imm(1);
 
 pub fn depth(e: &Expr) -> i32 {
     match e {
@@ -151,7 +152,11 @@ pub fn compile_expr(e: &Expr, co: &Context, com: &mut ContextMut) -> Vec<Instr> 
     let snek_error: Label = Label::new(Some("snek_error_stub"));
 
     match e {
-        Expr::Nil => instrs.push(Mov(co.src_to_target(Imm(1)))),
+        Expr::Nil => {
+            instrs.push(Mov(co.src_to_target(NIL)));
+
+            com.result_type = Some(List);
+        },
         Expr::Num(n) => {
             let (i, overflow) = n.overflowing_mul(2);
             if overflow {
