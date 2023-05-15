@@ -46,6 +46,24 @@ success_tests! {
 		expected: "1073741824",
 	},
 	{
+		name: list3_3,
+		file: "list3.snek",
+		input: "1",
+		expected: "1",
+	},
+	{
+		name: list3_4,
+		file: "list3.snek",
+		input: "2",
+		expected: "0",
+	},
+	{
+		name: list3_5,
+		file: "list3.snek",
+		input: "3",
+		expected: "-1",
+	},
+	{
 		name: set_expr3_4,
 		file: "set_expr3.snek",
 		input: "25",
@@ -600,6 +618,29 @@ static_error_tests! {
 }
 
 runtime_error_tests! {
+	{
+		name: list3_2,
+		file: "list3.snek",
+		expected: "invalid argument",
+	},
+	{
+		name: list3_6,
+		file: "list3.snek",
+		input: "4",
+		expected: "index out of range",
+	},
+	{
+		name: list3_7,
+		file: "list3.snek",
+		input: "0",
+		expected: "index out of range",
+	},
+	{
+		name: list3_8,
+		file: "list3.snek",
+		input: "-1",
+		expected: "index out of range",
+	},
 	{
 		name: set_expr3_6,
 		file: "set_expr3.snek",
