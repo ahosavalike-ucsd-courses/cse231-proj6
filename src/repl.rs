@@ -65,7 +65,7 @@ fn parse_input(input: &str) -> (i64, Type) {
             if x & 1 == 0 {
                 (x, Type::Int)
             } else {
-                (x, Type::List(None))
+                (x, Type::List)
             }
         }
     }

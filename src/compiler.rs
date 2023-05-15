@@ -699,6 +699,7 @@ pub fn compile_expr(e: &Expr, co: &Context, com: &mut ContextMut) -> Vec<Instr> 
             // Move R15
             instrs.push(Add(ToReg(R15, Imm64(8 * (1 + es.len() as i64)))));
             com.heap_used += 1 + es.len() as u64;
+            com.result_type = Some(List);
         }
         Expr::Define(_, _) => panic!("define cannot be compiled"),
         Expr::FnDefn(_, _, _) => panic!("Invalid: fn defn cannot be compiled here"),
