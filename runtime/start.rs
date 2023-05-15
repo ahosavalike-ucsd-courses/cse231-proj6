@@ -18,6 +18,7 @@ pub extern "C" fn snek_error(errcode: i64) {
             1 => "invalid representation",
             i if i >= 20 && i <= 29 => "invalid argument",
             i if i >= 30 && i <= 39 => "overflow",
+            i if i == 40 => "index out of range",
             _ => "",
         }
     );

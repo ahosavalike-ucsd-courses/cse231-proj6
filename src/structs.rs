@@ -252,6 +252,8 @@ pub enum Jump {
     E(Label),
     Z(Label),
     O(Label),
+    G(Label),
+    LE(Label),
 }
 
 impl fmt::Display for Jump {
@@ -261,6 +263,8 @@ impl fmt::Display for Jump {
             Jump::NE(x) | Jump::NZ(x) => write!(f, "jne {}", x),
             Jump::E(x) | Jump::Z(x) => write!(f, "je {}", x),
             Jump::O(x) => write!(f, "jo {}", x),
+            Jump::G(x) => write!(f, "jg {}", x),
+            Jump::LE(x) => write!(f, "jle {}", x),
         }
     }
 }
@@ -272,6 +276,8 @@ impl Jump {
             Jump::NE(l) | Jump::NZ(l) => dynasm!(ops; .arch x64; jne =>*lbls.get(l).unwrap()),
             Jump::E(l) | Jump::Z(l) => dynasm!(ops; .arch x64; je =>*lbls.get(l).unwrap()),
             Jump::O(l) => dynasm!(ops; .arch x64; jo =>*lbls.get(l).unwrap()),
+            Jump::G(l) => dynasm!(ops; .arch x64; jg =>*lbls.get(l).unwrap()),
+            Jump::LE(l) => dynasm!(ops; .arch x64; jle =>*lbls.get(l).unwrap()),
         }
     }
 }

@@ -307,7 +307,75 @@ pub fn compile_expr(e: &Expr, co: &Context, com: &mut ContextMut) -> Vec<Instr> 
             )));
 
             match op {
-                // TODO: Implement Index
+                Op2::Index => {
+                    // Ltype/Rax should be list
+                    match ltype {
+                        None => {
+                            instrs.extend(vec![
+                                Push(Rax),               // Save Rax to test
+                                And(ToReg(Rax, Imm(3))), // Check last to bits to be 01
+                                Sub(ToReg(Rax, Imm(1))),
+                                Mov(ToReg(Rdi, Imm(26))),
+                                JumpI(Jump::Z(snek_error.clone())),
+                                Pop(Rax),
+                            ]);
+                        }
+                        Some(List) => {}
+                        _ => {
+                            instrs.push(Mov(ToReg(Rdi, Imm(21)))); // invalid argument
+                            instrs.push(JumpI(Jump::NZ(snek_error.clone())));
+                            com.result_type = None;
+                            return instrs;
+                        }
+                    }
+                    // Rtype/Rbx should be number
+                    match rtype {
+                        None => {
+                            instrs.push(Test(ToReg(Rbx, Imm(1))));
+                            instrs.push(Mov(ToReg(Rdi, Imm(25)))); // invalid argument
+                            instrs.push(JumpI(Jump::NZ(snek_error.clone())));
+                        }
+                        Some(Int) => {}
+                        _ => {
+                            instrs.push(Mov(ToReg(Rdi, Imm(21)))); // invalid argument
+                            instrs.push(JumpI(Jump::NZ(snek_error.clone())));
+                            com.result_type = None;
+                            return instrs;
+                        }
+                    }
+                    // Index(snek) <= length(int)
+                    instrs.extend(vec![
+                        // Remove tag from address
+                        Sub(ToReg(Rax, Imm(1))),
+                        // Convert index from snek to number
+                        Sar(Rbx, 1),
+                        // Error code index out of bounds
+                        Mov(ToReg(Rdi, Imm(40))),
+                        // Test upper bound
+                        Cmp(ToReg(
+                            Rbx,
+                            Mem(MemRef {
+                                reg: Rax,
+                                offset: 0,
+                            }),
+                        )),
+                        JumpI(Jump::G(snek_error.clone())),
+                        // Test lower bound
+                        Cmp(ToReg(Rbx, Imm(0))),
+                        JumpI(Jump::LE(snek_error.clone())),
+                        // Add index
+                        Mul(Rbx, Imm(8)),
+                        Add(ToReg(Rax, OReg(Rbx))),
+                        Mov(ToReg(
+                            Rax,
+                            Mem(MemRef {
+                                reg: Rax,
+                                offset: 0,
+                            }),
+                        )),
+                    ]);
+                    co.rax_to_target(&mut instrs);
+                }
                 Op2::Equal => {
                     let needs_check = ltype.is_none() || rtype.is_none();
                     if ltype.is_some() && rtype.is_some() && ltype != rtype {
