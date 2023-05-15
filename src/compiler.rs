@@ -313,10 +313,10 @@ pub fn compile_expr(e: &Expr, co: &Context, com: &mut ContextMut) -> Vec<Instr> 
                         None => {
                             instrs.extend(vec![
                                 Push(Rax),               // Save Rax to test
-                                And(ToReg(Rax, Imm(3))), // Check last to bits to be 01
-                                Sub(ToReg(Rax, Imm(1))),
+                                And(ToReg(Rax, Imm(3))), // Check last two bits to be 01
+                                Cmp(ToReg(Rax, Imm(1))),
                                 Mov(ToReg(Rdi, Imm(26))),
-                                JumpI(Jump::Z(snek_error.clone())),
+                                JumpI(Jump::NE(snek_error.clone())),
                                 Pop(Rax),
                             ]);
                         }
@@ -374,7 +374,7 @@ pub fn compile_expr(e: &Expr, co: &Context, com: &mut ContextMut) -> Vec<Instr> 
                             }),
                         )),
                     ]);
-                    co.rax_to_target(&mut instrs);
+                    com.result_type = None;
                 }
                 Op2::Equal => {
                     let needs_check = ltype.is_none() || rtype.is_none();
