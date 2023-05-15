@@ -84,6 +84,18 @@ success_tests! {
 		expected: "25",
 	},
 	{
+		name: list2_2,
+		file: "list2.snek",
+		input: "1",
+		expected: "5",
+	},
+	{
+		name: list2_3,
+		file: "list2.snek",
+		input: "2",
+		expected: "0",
+	},
+	{
 		name: add1_1,
 		file: "add1.snek",
 		expected: "73",
@@ -603,6 +615,29 @@ runtime_error_tests! {
 		name: invalid_argument_fail2_1,
 		file: "invalid_argument_fail2.snek",
 		expected: "invalid argument",
+	},
+	{
+		name: list2_1,
+		file: "list2.snek",
+		expected: "invalid argument",
+	},
+	{
+		name: list2_4,
+		file: "list2.snek",
+		input: "3",
+		expected: "index out of range",
+	},
+	{
+		name: list2_5,
+		file: "list2.snek",
+		input: "0",
+		expected: "index out of range",
+	},
+	{
+		name: list2_6,
+		file: "list2.snek",
+		input: "-1",
+		expected: "index out of range",
 	},
 	{
 		name: print1_1,

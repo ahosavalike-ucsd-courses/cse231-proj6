@@ -1,0 +1,7 @@
+(let ((x (list 5 10))) (- (index x 2) (index x input)))
+; (dynamic "invalid argument")
+; ((input 1) (output 5))
+; ((input 2) (output 0))
+; ((input 3) (dynamic "index out of range"))
+; ((input 0) (dynamic "index out of range"))
+; ((input -1) (dynamic "index out of range"))
