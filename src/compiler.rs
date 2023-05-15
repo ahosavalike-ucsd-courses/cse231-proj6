@@ -359,10 +359,7 @@ pub fn compile_expr(e: &Expr, co: &Context, com: &mut ContextMut) -> Vec<Instr> 
                         instrs.push(JumpI(Jump::Nz(snek_error.clone())));
                     }
                     if rtype.is_none() {
-                        instrs.push(Test(ToReg(
-                            Rbx,
-                            Imm(1),
-                        )));
+                        instrs.push(Test(ToReg(Rbx, Imm(1))));
                         instrs.push(Mov(ToReg(Rdi, Imm(25)))); // invalid argument
                         instrs.push(JumpI(Jump::Nz(snek_error.clone())));
                     }
