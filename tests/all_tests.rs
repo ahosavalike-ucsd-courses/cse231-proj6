@@ -828,6 +828,11 @@ runtime_error_tests! {
 		expected: "invalid argument",
 	},
 	{
+		name: list5_1,
+		file: "list5.snek",
+		expected: "out of range",
+	},
+	{
 		name: invalid_argument_fail5_1,
 		file: "invalid_argument_fail5.snek",
 		expected: "invalid argument",
@@ -913,6 +918,11 @@ runtime_error_tests! {
 		file: "if_expr_input.snek",
 		input: "665",
 		expected: "invalid argument",
+	},
+	{
+		name: list6_1,
+		file: "list6.snek",
+		expected: "out of range",
 	},
 	{
 		name: invalid_argument_fail6_1,
