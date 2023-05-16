@@ -35,7 +35,8 @@ pub fn depth(e: &Expr) -> i32 {
             .enumerate()
             .map(|(i, e)| (i as i32 + depth(e)))
             .max()
-            .unwrap_or(0),
+            .unwrap_or(0)
+            .max(es.len() as i32),
         Expr::If(cond, then, other) => depth(cond).max(depth(then)).max(depth(other)),
         Expr::Loop(e) => depth(e),
         Expr::Block(es) => es.iter().map(|expr| depth(expr)).max().unwrap_or(0),
@@ -80,6 +81,7 @@ pub fn compile_func_defns(fns: &Vec<Expr>, com: &mut ContextMut) -> Vec<Instr> {
         // No else block as we checked and paniced in preprocessing
         if let Expr::FnDefn(name, vars, body) = f {
             com.depth = com.fns.get_mut(name).unwrap().depth;
+            println!("Depth of {name}: {}", com.depth);
             // Separate context for each function definiton
             let mut co = Context::new(None)
                 .modify_si(vars.len() as i32)
