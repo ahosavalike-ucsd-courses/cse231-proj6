@@ -7,6 +7,11 @@ success_tests! {
 		expected: "25",
 	},
 	{
+		name: ee_simple_example1_1,
+		file: "ee_simple_example1.snek",
+		expected: "(list 1 2 3 4 5)",
+	},
+	{
 		name: binding_nested_1,
 		file: "binding_nested.snek",
 		expected: "1",
@@ -323,6 +328,12 @@ success_tests! {
 		expected: "true",
 	},
 	{
+		name: ee_error_bounds1_4,
+		file: "ee_error_bounds1.snek",
+		input: "2",
+		expected: "2",
+	},
+	{
 		name: false_val_1,
 		file: "false_val.snek",
 		expected: "false",
@@ -417,6 +428,17 @@ success_tests! {
 		name: nested_arith2_1,
 		file: "nested_arith2.snek",
 		expected: "0",
+	},
+	{
+		name: ee_simple_example2_1,
+		file: "ee_simple_example2.snek",
+		expected: "4\n(list 1 false 3 4 5)\n(list 1 false 3 4 5)",
+	},
+	{
+		name: ee_simple_example2_2,
+		file: "ee_simple_example2.snek",
+		input: "10",
+		expected: "4\n(list 1 10 3 4 5)\n(list 1 10 3 4 5)",
 	},
 }
 
@@ -687,6 +709,11 @@ runtime_error_tests! {
 		expected: "index out of range",
 	},
 	{
+		name: ee_error_tag1_1,
+		file: "ee_error_tag1.snek",
+		expected: "invalid argument",
+	},
+	{
 		name: print1_1,
 		file: "print1.snek",
 		expected: "invalid argument",
@@ -699,6 +726,11 @@ runtime_error_tests! {
 	{
 		name: number_overflow_fail0_1,
 		file: "number_overflow_fail0.snek",
+		expected: "overflow",
+	},
+	{
+		name: ee_error3_1,
+		file: "ee_error3.snek",
 		expected: "overflow",
 	},
 	{
@@ -757,6 +789,23 @@ runtime_error_tests! {
 		expected: "invalid argument",
 	},
 	{
+		name: ee_error_bounds1_1,
+		file: "ee_error_bounds1.snek",
+		expected: "invalid argument",
+	},
+	{
+		name: ee_error_bounds1_2,
+		file: "ee_error_bounds1.snek",
+		input: "0",
+		expected: "out of range",
+	},
+	{
+		name: ee_error_bounds1_3,
+		file: "ee_error_bounds1.snek",
+		input: "4",
+		expected: "out of range",
+	},
+	{
 		name: nested_arith3_2,
 		file: "nested_arith3.snek",
 		input: "4611686018427387890",
@@ -771,6 +820,11 @@ runtime_error_tests! {
 	{
 		name: invalid_argument_fail1_1,
 		file: "invalid_argument_fail1.snek",
+		expected: "invalid argument",
+	},
+	{
+		name: ee_error_tag2_1,
+		file: "ee_error_tag2.snek",
 		expected: "invalid argument",
 	},
 	{

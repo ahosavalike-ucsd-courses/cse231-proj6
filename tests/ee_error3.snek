@@ -1,0 +1,2 @@
+(+ 1 (index (list 4611686018427387903) 1))
+; (dynamic "overflow")
