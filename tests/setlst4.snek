@@ -1,0 +1,5 @@
+(set! (list 1 2 3) input 5)
+; (dynamic "invalid argument")
+; ((input 3) (output "(list 1 2 5)"))
+; ((input -1) (dynamic "out of range"))
+; ((input 5) (dynamic "out of range"))

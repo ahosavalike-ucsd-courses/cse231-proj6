@@ -41,6 +41,11 @@ success_tests! {
 		expected: "200",
 	},
 	{
+		name: setlst2_1,
+		file: "setlst2.snek",
+		expected: "5",
+	},
+	{
 		name: shadowed_binding_succ1_1,
 		file: "shadowed_binding_succ1.snek",
 		expected: "7",
@@ -134,6 +139,17 @@ success_tests! {
 		expected: "100",
 	},
 	{
+		name: setlst3_1,
+		file: "setlst3.snek",
+		expected: "(list false 2 false)",
+	},
+	{
+		name: setlst3_2,
+		file: "setlst3.snek",
+		input: "4",
+		expected: "(list 4 2 4)",
+	},
+	{
 		name: type_check_succ5_1,
 		file: "type_check_succ5.snek",
 		expected: "true",
@@ -187,6 +203,17 @@ success_tests! {
 		name: binding1_1,
 		file: "binding1.snek",
 		expected: "-5",
+	},
+	{
+		name: setlst4_2,
+		file: "setlst4.snek",
+		input: "3",
+		expected: "(list 1 2 5)",
+	},
+	{
+		name: setlst5_2,
+		file: "setlst5.snek",
+		expected: "(list 1 5 3)",
 	},
 	{
 		name: binding0_1,
@@ -463,6 +490,11 @@ success_tests! {
 		file: "ee_simple_example2.snek",
 		input: "10",
 		expected: "4\n(list 1 10 3 4 5)\n(list 1 10 3 4 5)",
+	},
+	{
+		name: setlst1_1,
+		file: "setlst1.snek",
+		expected: "5",
 	},
 }
 
@@ -756,6 +788,23 @@ runtime_error_tests! {
 		name: number_overflow_fail0_1,
 		file: "number_overflow_fail0.snek",
 		expected: "overflow",
+	},
+	{
+		name: setlst4_1,
+		file: "setlst4.snek",
+		expected: "invalid argument",
+	},
+	{
+		name: setlst4_3,
+		file: "setlst4.snek",
+		input: "-1",
+		expected: "out of range",
+	},
+	{
+		name: setlst4_4,
+		file: "setlst4.snek",
+		input: "5",
+		expected: "out of range",
 	},
 	{
 		name: ee_error3_1,

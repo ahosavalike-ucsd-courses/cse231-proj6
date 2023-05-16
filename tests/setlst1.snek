@@ -1,0 +1,2 @@
+(index (set! (list 1 2 3) 3 5) 3)
+; (output 5)
