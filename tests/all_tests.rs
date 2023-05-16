@@ -144,6 +144,18 @@ success_tests! {
 		expected: "35",
 	},
 	{
+		name: ee_points1_4,
+		file: "ee_points1.snek",
+		input: "2",
+		expected: "(list 0 4)",
+	},
+	{
+		name: ee_points1_5,
+		file: "ee_points1.snek",
+		input: "-2",
+		expected: "(list 0 -4)",
+	},
+	{
 		name: shadowed_binding_succ7_1,
 		file: "shadowed_binding_succ7.snek",
 		expected: "200",
@@ -348,6 +360,18 @@ success_tests! {
 		file: "nested_arith3.snek",
 		input: "8",
 		expected: "1117",
+	},
+	{
+		name: ee_points2_4,
+		file: "ee_points2.snek",
+		input: "2",
+		expected: "(list 4 4)",
+	},
+	{
+		name: ee_points2_5,
+		file: "ee_points2.snek",
+		input: "-2",
+		expected: "(list -4 -4)",
 	},
 	{
 		name: if_expr_succ0_1,
@@ -714,6 +738,11 @@ runtime_error_tests! {
 		expected: "invalid argument",
 	},
 	{
+		name: ee_points1_3,
+		file: "ee_points1.snek",
+		expected: "invalid argument",
+	},
+	{
 		name: print1_1,
 		file: "print1.snek",
 		expected: "invalid argument",
@@ -815,6 +844,11 @@ runtime_error_tests! {
 		name: nested_arith3_3,
 		file: "nested_arith3.snek",
 		input: "true",
+		expected: "invalid argument",
+	},
+	{
+		name: ee_points2_3,
+		file: "ee_points2.snek",
 		expected: "invalid argument",
 	},
 	{
