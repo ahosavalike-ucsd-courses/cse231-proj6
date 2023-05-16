@@ -42,6 +42,7 @@ pub fn depth(e: &Expr) -> i32 {
         Expr::Block(es) => es.iter().map(|expr| depth(expr)).max().unwrap_or(0),
         Expr::Break(e) => depth(e),
         Expr::Set(_, e) => depth(e),
+        Expr::SetLst(lst, idx, val) => depth(lst).max(1 + depth(idx)).max(2 + depth(val)),
         Expr::Define(_, e) => depth(e),
         Expr::FnDefn(_, v, b) => depth_aligned(b, v.len() as i32),
         Expr::FnCall(_, args) => args.len() as i32,
@@ -158,7 +159,7 @@ pub fn compile_expr(e: &Expr, co: &Context, com: &mut ContextMut) -> Vec<Instr> 
             instrs.push(Mov(co.src_to_target(NIL)));
 
             com.result_type = Some(List);
-        },
+        }
         Expr::Num(n) => {
             let (i, overflow) = n.overflowing_mul(2);
             if overflow {
@@ -350,7 +351,7 @@ pub fn compile_expr(e: &Expr, co: &Context, com: &mut ContextMut) -> Vec<Instr> 
                             return instrs;
                         }
                     }
-                    // Index(snek) <= length(int)
+                    // 1 <= Index(snek) <= length(int)
                     instrs.extend(vec![
                         // Remove tag from address
                         Sub(ToReg(Rax, Imm(1))),
@@ -370,8 +371,8 @@ pub fn compile_expr(e: &Expr, co: &Context, com: &mut ContextMut) -> Vec<Instr> 
                         // Test lower bound
                         Cmp(ToReg(Rbx, Imm(0))),
                         JumpI(Jump::LE(snek_error.clone())),
-                        // Add index
-                        Mul(Rbx, Imm(8)),
+                        // Add index, multiply 8 = shift 3
+                        Sal(Rbx, 3),
                         Add(ToReg(Rax, OReg(Rbx))),
                         Mov(ToReg(
                             Rax,
@@ -581,6 +582,131 @@ pub fn compile_expr(e: &Expr, co: &Context, com: &mut ContextMut) -> Vec<Instr> 
                 OReg(Rax),
             )));
             co.rax_to_target(&mut instrs)
+        }
+        Expr::SetLst(lst, idx, val) => {
+            // Set expression is not a tail position
+            let co = &co.modify_tail(false);
+            let co_child = &co.modify_target(None);
+
+            // Compile list
+            instrs.extend(compile_expr(lst, co_child, com));
+            // Copy to stack
+            instrs.push(Mov(ToMem(
+                MemRef {
+                    reg: Rsp,
+                    offset: co.si,
+                },
+                OReg(Rax),
+            )));
+
+            // Type check lst
+            match com.result_type {
+                None => {
+                    instrs.extend(vec![
+                        And(ToReg(Rax, Imm(3))), // Check last two bits to be 01
+                        Cmp(ToReg(Rax, Imm(1))),
+                        Mov(ToReg(Rdi, Imm(26))),
+                        JumpI(Jump::NE(snek_error.clone())),
+                    ]);
+                }
+                Some(List) => {}
+                _ => {
+                    instrs.push(Mov(ToReg(Rdi, Imm(21)))); // invalid argument
+                    instrs.push(JumpI(Jump::NZ(snek_error.clone())));
+                    com.result_type = None;
+                    return instrs;
+                }
+            }
+
+            // Compile index
+            instrs.extend(compile_expr(idx, &co_child.modify_si(co.si + 1), com));
+            // Type check idx
+            match com.result_type {
+                None => {
+                    instrs.push(Test(ToReg(Rax, Imm(1))));
+                    instrs.push(Mov(ToReg(Rdi, Imm(25)))); // invalid argument
+                    instrs.push(JumpI(Jump::NZ(snek_error.clone())));
+                }
+                Some(Int) => {}
+                _ => {
+                    instrs.push(Mov(ToReg(Rdi, Imm(21)))); // invalid argument
+                    instrs.push(JumpI(Jump::NZ(snek_error.clone())));
+                    com.result_type = None;
+                    return instrs;
+                }
+            }
+
+            // 1 <= Index(snek) <= length(int)
+            instrs.extend(vec![
+                // Get heap address
+                Mov(ToReg(
+                    Rbx,
+                    Mem(MemRef {
+                        reg: Rsp,
+                        offset: co.si,
+                    }),
+                )),
+                // Remove tag from address
+                Sub(ToReg(Rbx, Imm(1))),
+                // Convert index from snek to number
+                Sar(Rax, 1),
+                // Error code index out of bounds
+                Mov(ToReg(Rdi, Imm(40))),
+                // Test upper bound
+                Cmp(ToReg(
+                    Rax,
+                    Mem(MemRef {
+                        reg: Rbx,
+                        offset: 0,
+                    }),
+                )),
+                JumpI(Jump::G(snek_error.clone())),
+                // Test lower bound
+                Cmp(ToReg(Rax, Imm(0))),
+                JumpI(Jump::LE(snek_error.clone())),
+                // Add offset to base address, index multiply 8 = shift 3
+                Sal(Rax, 3),
+                Add(ToReg(Rbx, OReg(Rax))),
+                // Save this
+                Mov(ToMem(
+                    MemRef {
+                        reg: Rsp,
+                        offset: co.si + 1,
+                    },
+                    OReg(Rbx),
+                )),
+            ]);
+
+            // Compile value
+            instrs.extend(compile_expr(val, &co_child.modify_si(co.si + 2), com));
+            instrs.extend(vec![
+                // Get address
+                Mov(ToReg(
+                    Rbx,
+                    Mem(MemRef {
+                        reg: Rsp,
+                        offset: co.si + 1,
+                    }),
+                )),
+                // Copy value
+                Mov(ToMem(
+                    MemRef {
+                        reg: Rbx,
+                        offset: 0,
+                    },
+                    OReg(Rax),
+                )),
+                // Set result
+                Mov(ToReg(
+                    Rax,
+                    Mem(MemRef {
+                        reg: Rsp,
+                        offset: co.si,
+                    }),
+                )),
+            ]);
+            co.rax_to_target(&mut instrs);
+            com.result_type = Some(List);
         }
         Expr::Block(es) => {
             let block_com = &mut com.clone();
