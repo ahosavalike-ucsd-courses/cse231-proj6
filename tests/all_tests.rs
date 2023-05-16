@@ -264,6 +264,54 @@ success_tests! {
 		expected: "6",
 	},
 	{
+		name: ee_bst_45,
+		file: "ee_bst.snek",
+		input: "-1",
+		expected: "true",
+	},
+	{
+		name: ee_bst_46,
+		file: "ee_bst.snek",
+		input: "0",
+		expected: "false",
+	},
+	{
+		name: ee_bst_47,
+		file: "ee_bst.snek",
+		input: "1",
+		expected: "true",
+	},
+	{
+		name: ee_bst_48,
+		file: "ee_bst.snek",
+		input: "2",
+		expected: "true",
+	},
+	{
+		name: ee_bst_49,
+		file: "ee_bst.snek",
+		input: "3",
+		expected: "true",
+	},
+	{
+		name: ee_bst_50,
+		file: "ee_bst.snek",
+		input: "4",
+		expected: "true",
+	},
+	{
+		name: ee_bst_51,
+		file: "ee_bst.snek",
+		input: "5",
+		expected: "true",
+	},
+	{
+		name: ee_bst_52,
+		file: "ee_bst.snek",
+		input: "6",
+		expected: "false",
+	},
+	{
 		name: factr_chain_4,
 		file: "factr_chain.snek",
 		input: "5",
@@ -842,6 +890,11 @@ runtime_error_tests! {
 		name: list4_5,
 		file: "list4.snek",
 		input: "4",
+		expected: "invalid argument",
+	},
+	{
+		name: ee_bst_44,
+		file: "ee_bst.snek",
 		expected: "invalid argument",
 	},
 	{

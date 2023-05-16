@@ -1,0 +1,53 @@
+; Add value to a bst, creating one if nil
+(fun (add_val root x) (
+    if (= root nil) (
+        ; Create one if nil
+        list nil x nil
+    ) (block
+            ; Add to the right spot
+            (let ((val (index root 2))) (
+                ; If equal, already present, return
+                if (= x val) nil (
+                    if (< x val)
+                        ; Left child update
+                        (set! root 1 (add_val (index root 1) x))
+                        ; Right child update
+                        (set! root 3 (add_val (index root 3) x))
+                )
+            ))
+            ; Return root
+            root
+    )
+))
+
+; Check for value in BST
+(fun (val_in bst x) (
+    if (= bst nil) false (
+        let ((val (index bst 2))) (
+            if (= x val) true (
+                if (< x val)
+                    (val_in (index bst 1) x)
+                    (val_in (index bst 3) x)
+            )
+        )
+    )
+))
+
+; Main body
+(let 
+    ((tree (add_val (add_val (add_val (add_val (add_val nil 3) 2) 4) 1) 5)))
+    (block
+        (set! tree (add_val tree -1))
+        (val_in tree input)
+    )
+)
+
+; (dynamic "invalid argument")
+; ((input -1) (output true))
+; ((input 0) (output false))
+; ((input 1) (output true))
+; ((input 2) (output true))
+; ((input 3) (output true))
+; ((input 4) (output true))
+; ((input 5) (output true))
+; ((input 6) (output false))
