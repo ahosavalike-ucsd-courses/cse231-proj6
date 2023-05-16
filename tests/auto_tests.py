@@ -26,7 +26,13 @@ def read_test(fn):
         for (i,line) in enumerate(f.readlines()):
             if not line.startswith(";"):
                 continue
-            data = loads(line[1:])
+            data = None
+            try:
+                data = loads(line[1:])
+            except:
+                continue
+            if type(data) != list:
+                continue
             if type(data[0]) != list:
                 data = [data]
             out = {
