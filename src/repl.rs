@@ -74,9 +74,9 @@ fn parse_input(input: &str) -> (i64, Type) {
 fn print_result(result: u64) -> u64 {
     if result % 2 == 0 {
         println!("{}", result as i64 / 2);
-    } else if result == 1 {
-        println!("false");
     } else if result == 3 {
+        println!("false");
+    } else if result == 7 {
         println!("true");
     } else {
         println!("Unknown format: {result}")
