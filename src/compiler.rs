@@ -328,7 +328,11 @@ pub fn compile_expr(e: &Expr, co: &Context, com: &mut ContextMut) -> Vec<Instr> 
                                 Pop(Rax),
                             ]);
                         }
-                        Some(List) => {}
+                        Some(List) => instrs.extend(vec![
+                            Cmp(ToReg(Rax, NIL)),
+                            Mov(ToReg(Rdi, Imm(40))),
+                            JumpI(Jump::Z(snek_error.clone())),
+                        ]),
                         _ => {
                             instrs.push(Mov(ToReg(Rdi, Imm(21)))); // invalid argument
                             instrs.push(JumpI(Jump::NZ(snek_error.clone())));
@@ -609,7 +613,11 @@ pub fn compile_expr(e: &Expr, co: &Context, com: &mut ContextMut) -> Vec<Instr> 
                         JumpI(Jump::NE(snek_error.clone())),
                     ]);
                 }
-                Some(List) => {}
+                Some(List) => instrs.extend(vec![
+                    Cmp(ToReg(Rax, NIL)),
+                    Mov(ToReg(Rdi, Imm(40))),
+                    JumpI(Jump::Z(snek_error.clone())),
+                ]),
                 _ => {
                     instrs.push(Mov(ToReg(Rdi, Imm(21)))); // invalid argument
                     instrs.push(JumpI(Jump::NZ(snek_error.clone())));
