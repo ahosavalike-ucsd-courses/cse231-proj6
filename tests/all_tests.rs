@@ -914,6 +914,11 @@ runtime_error_tests! {
 		expected: "overflow",
 	},
 	{
+		name: list7_2,
+		file: "list7.snek",
+		expected: "out of range",
+	},
+	{
 		name: if_expr_input_2,
 		file: "if_expr_input.snek",
 		input: "665",
