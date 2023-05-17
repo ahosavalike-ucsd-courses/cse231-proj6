@@ -549,6 +549,7 @@ pub fn compile_expr(e: &Expr, co: &Context, com: &mut ContextMut) -> Vec<Instr> 
                 // Then
                 instrs.extend(compile_expr(t, co, com));
             }
+            com.result_type = None;
         }
         Expr::Set(x, e) => {
             // Set expression is not a tail position
@@ -860,6 +861,7 @@ pub fn compile_expr(e: &Expr, co: &Context, com: &mut ContextMut) -> Vec<Instr> 
                 instrs.push(Call(Label::new(Some(&format!("fun_{name}")))));
                 co.rax_to_target(&mut instrs);
             }
+            com.result_type = None;
         }
         Expr::List(es) => {
             for (i, e) in es.iter().enumerate() {
