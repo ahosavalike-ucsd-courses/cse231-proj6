@@ -324,8 +324,11 @@ pub fn compile_expr(e: &Expr, co: &Context, com: &mut ContextMut) -> Vec<Instr> 
                                 And(ToReg(Rax, Imm(3))), // Check last two bits to be 01
                                 Cmp(ToReg(Rax, Imm(1))),
                                 Mov(ToReg(Rdi, Imm(26))),
-                                JumpI(Jump::NE(snek_error.clone())),
                                 Pop(Rax),
+                                JumpI(Jump::NE(snek_error.clone())),
+                                Cmp(ToReg(Rax, NIL)),
+                                Mov(ToReg(Rdi, Imm(40))),
+                                JumpI(Jump::E(snek_error.clone())),
                             ]);
                         }
                         Some(List) => instrs.extend(vec![
@@ -607,6 +610,9 @@ pub fn compile_expr(e: &Expr, co: &Context, com: &mut ContextMut) -> Vec<Instr> 
             match com.result_type {
                 None => {
                     instrs.extend(vec![
+                        Cmp(ToReg(Rax, NIL)),
+                        Mov(ToReg(Rdi, Imm(40))),
+                        JumpI(Jump::E(snek_error.clone())),
                         And(ToReg(Rax, Imm(3))), // Check last two bits to be 01
                         Cmp(ToReg(Rax, Imm(1))),
                         Mov(ToReg(Rdi, Imm(26))),
