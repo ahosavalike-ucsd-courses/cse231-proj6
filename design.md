@@ -2,6 +2,8 @@
 
 ## Concrete Syntax
 
+The concrete syntax of Eggeater builds on top of Diamondback by adding operators to create lists, index into and mutate them.
+
 ```
 <prog> := <defn>* <expr>
 <defn> := (fun (<name> <name>*) <expr>)
@@ -25,7 +27,7 @@
   | (index <expr> <expr>)                     // Index into the list
   | (set! <expr> <expr> <expr>)               // Mutate the list's index to the value
 
-// The below are of no real use until resizable lists are part of the language.
+// The below are of no real use until resizable lists are part of the language, thus unimplemented.
 // Maybe useful when functions return variable sized lists.
 //  | (len <expr>)                              // Length of list
 //  | (list <expr>)                             // Initialize with size
@@ -38,7 +40,7 @@
 ```
 
 * This syntax introduces heap allocated fixed size `list`s with `1` based indexing.
-* Lists can take arbitrary number of elements. Needs a minimum of size 1. Zero size lists can be constructed with `nil`.
+* Lists can take arbitrary number of elements. Zero size lists become `nil`.
 * The `=` operator can now also check reference equality between lists.
 * `nil` represents an empty list. It cannot be indexed into. Can only be compared with other lists. Comparing with other types is a dynamic error.
 * `index` returns the element in the given index of the list. `set!` mutates the list's index to have the given value.
@@ -87,6 +89,16 @@ The list output is in the same representation as the code.
 (list 1 10 3 4 5)
 ```
 
+```bash
+❯ cat ./tests/ee_simple_example3.snek
+(list)
+; (output "nil")
+❯ ./tests/ee_simple_example3.run
+nil
+```
+
+An empty list automatically becomes nil.
+
 ### Error Tag
 
 ```bash
@@ -97,7 +109,7 @@ The list output is in the same representation as the code.
 an error ocurred 23: invalid argument
 ```
 
-This comes from the type checking for comparison operators which require both arguments to be numbers.
+This comes from the runtime type checking for comparison operators which require both arguments to be numbers.
 
 ```bash
 ❯ cat ./tests/ee_error_tag2.snek
@@ -107,7 +119,7 @@ This comes from the type checking for comparison operators which require both ar
 an error ocurred 21: invalid argument
 ```
 
-This comes from type checking in the `index` implementation that requires the first argument to be a list and the second one to be a number.
+This comes from runtime type checking in the `index` implementation that requires the first argument to be a list and the second one to be a number.
 
 ### Error Bounds
 
@@ -128,7 +140,7 @@ an error ocurred 40: index out of range
 2
 ```
 
-The first error comes from `index` requiring the second argument to be a number. The next two errors are from the out of bounds check for the index w.r.t to the list's length.
+The first runtime error comes from `index` requiring the second argument to be a number. The next two runtime errors are from the out of bounds check for the index w.r.t to the list's length.
 
 ### Error3
 
@@ -257,13 +269,13 @@ true
 false
 ```
 
-Binary Search Tree implementation using mutable lists (`set!` on `list`). Shows the usage of `add_val` and `val_in` along with the overloaded `set!` usage on lists and variables. `0` and `6` are not in the BST. This implementation mutates the BST rather than constructing a new one along the path.
+Binary Search Tree implementation using mutable lists (`set!` on `list`). Shows the usage of `add_val` and `val_in` along with the overloaded `set!` usage on lists and variables. `0` and `6` are not in the BST. This implementation mutates the BST rather than constructing a new one along the path. Uses the first index for the left child, second index for the value and third index for the right child.
 
 ## Comparisons
 
 ### Python
 
-Primitive types can go on the heap and allocated dynamically, which is how this compiler does it as well. Metadata is stored by wrapping the primitive types in data objects, which means even constants have overhead. This is similar to how we have tags for numbers and an extra word for representing length in lists.
+Primitive types can go on the heap and allocated dynamically, which is how this compiler does it as well. Metadata is stored by wrapping the primitive types in data objects, which means even constants have overhead. This is similar to how we have tags for numbers and an extra word for representing length in lists. Memory for heap allocated data is managed by the Python memory manager, similar to how we take care of memory allocation and layout in Snek.
 
 ### C
 
