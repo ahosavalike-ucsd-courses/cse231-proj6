@@ -431,6 +431,11 @@ success_tests! {
 		expected: "1225",
 	},
 	{
+		name: ee_simple_example3_1,
+		file: "ee_simple_example3.snek",
+		expected: "nil",
+	},
+	{
 		name: nested_arith3_1,
 		file: "nested_arith3.snek",
 		input: "8",
