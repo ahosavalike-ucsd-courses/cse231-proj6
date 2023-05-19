@@ -71,17 +71,44 @@ fn parse_input(input: &str) -> (i64, Type) {
     }
 }
 
-fn print_result(result: i64) -> i64 {
-    if result % 2 == 0 {
-        println!("{}", result / 2);
-    } else if result == 3 {
-        println!("false");
-    } else if result == 7 {
-        println!("true");
+fn snek_str(val: i64, seen: &mut Vec<i64>) -> String {
+    if val == 7 {
+        "true".to_string()
+    } else if val == 3 {
+        "false".to_string()
+    } else if val % 2 == 0 {
+        format!("{}", val >> 1)
+    } else if val == 1 {
+        "nil".to_string()
+    } else if val & 1 == 1 {
+        if seen.contains(&val) {
+            return "(list <cyclic>)".to_string();
+        }
+        seen.push(val);
+        let addr = (val - 1) as *const i64;
+        let count = unsafe { *addr } as usize;
+        let mut v: Vec<i64> = vec![0; count];
+        for i in 1..=count {
+            v[i - 1] = unsafe { *addr.offset(i as isize) };
+        }
+        let result = format!(
+            "(list {})",
+            v.iter()
+                .map(|x| snek_str(*x, seen))
+                .collect::<Vec<String>>()
+                .join(" ")
+        );
+        seen.pop();
+        return result;
     } else {
-        println!("Unknown format: {result}")
+        format!("Unknown value: {}", val)
     }
-    result
+}
+
+fn print_result(result: i64) -> i64 {
+    let mut seen = Vec::<i64>::new();
+    println!("{}", snek_str(result, &mut seen));
+    return result;
 }
 
 fn eval(
