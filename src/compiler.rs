@@ -7,8 +7,8 @@ use Type::*;
 
 use dynasmrt::DynamicLabel;
 
-use im::hashmap;
-use im::HashMap;
+use im::HashSet;
+use im::{hashmap, HashMap};
 
 const TRUE: Arg64 = Imm(7);
 const FALSE: Arg64 = Imm(3);
@@ -479,11 +479,11 @@ pub fn compile_expr(e: &Expr, co: &Context, com: &mut ContextMut) -> Vec<Instr> 
         }
         Expr::Let(bindings, e) => {
             let mut new_env = co.env.clone();
-            let mut track_dup = hashmap! {};
+            let mut track_dup = HashSet::new();
 
             for (i, (x, b)) in bindings.iter().enumerate() {
                 let si_ = co.si + i as i32;
-                if track_dup.contains_key(x) {
+                if track_dup.contains(x) {
                     panic!("Duplicate binding")
                 }
                 instrs.extend(compile_expr(
@@ -501,7 +501,7 @@ pub fn compile_expr(e: &Expr, co: &Context, com: &mut ContextMut) -> Vec<Instr> 
                     ),
                     com,
                 ));
-                track_dup.insert(x.to_string(), true);
+                track_dup.insert(x);
                 new_env.insert(x.to_string(), VarEnv::new(si_, com.result_type, false));
             }
 
