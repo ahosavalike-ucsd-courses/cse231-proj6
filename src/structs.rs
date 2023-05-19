@@ -5,7 +5,7 @@ use std::fmt::Debug;
 use dynasmrt::{dynasm, DynamicLabel, DynasmApi, DynasmLabelApi};
 
 // Parser
-#[derive(Debug)]
+#[derive(Clone, Debug)]
 pub enum Op1 {
     Add1,
     Sub1,
@@ -14,7 +14,7 @@ pub enum Op1 {
     Print,
 }
 
-#[derive(Debug)]
+#[derive(Clone, Debug)]
 pub enum Op2 {
     Plus,
     Minus,
@@ -28,7 +28,7 @@ pub enum Op2 {
     Index,
 }
 
-#[derive(Debug)]
+#[derive(Clone, Debug)]
 pub enum Expr {
     Nil,
     Num(i64),
