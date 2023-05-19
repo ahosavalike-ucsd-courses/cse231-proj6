@@ -71,9 +71,9 @@ fn parse_input(input: &str) -> (i64, Type) {
     }
 }
 
-fn print_result(result: u64) -> u64 {
+fn print_result(result: i64) -> i64 {
     if result % 2 == 0 {
-        println!("{}", result as i64 / 2);
+        println!("{}", result / 2);
     } else if result == 3 {
         println!("false");
     } else if result == 7 {
@@ -88,7 +88,7 @@ fn eval(
     ops: &mut Assembler,
     labels: &mut HashMap<Label, DynamicLabel>,
     instrs: &Vec<Instr>,
-) -> u64 {
+) -> i64 {
     let start = ops.offset();
     instrs_to_asm(&instrs, ops, labels);
     dynasm!(ops; .arch x64; ret);
@@ -97,7 +97,7 @@ fn eval(
         panic!("error committing ops {e}");
     }
 
-    let jitted_fn: extern "C" fn() -> u64 = {
+    let jitted_fn: extern "C" fn() -> i64 = {
         let reader = ops.reader();
         let buf = reader.lock();
         unsafe { mem::transmute(buf.ptr(start)) }
@@ -108,9 +108,11 @@ fn eval(
 pub fn repl(eval_input: Option<(&Expr, &str)>) {
     // Initial define stack size low to see reallocations
     let mut define_stack: Vec<u64> = vec![0; 1];
+    let mut heap: Vec<u64> = vec![0; 16384];
 
     let mut co = Context::new(Some(define_stack.as_mut_ptr())).modify_si(1);
     let mut com = ContextMut::new();
+    com.curr_heap_ptr = heap.as_mut_ptr() as i64;
 
     let mut ops = Assembler::new().unwrap();
     let mut labels: HashMap<Label, DynamicLabel> = hashmap! {};
@@ -120,7 +122,7 @@ pub fn repl(eval_input: Option<(&Expr, &str)>) {
         add_interface_calls(&mut ops, &mut labels, true);
         let mut instrs: Vec<Instr> = vec![Instr::Mov(MovArgs::ToReg(
             Reg::R15,
-            Arg64::Imm64(define_stack.as_mut_ptr() as i64),
+            Arg64::Imm64(heap.as_mut_ptr() as i64),
         ))];
         // Setup input
         let (input, is_bool) = parse_input(input);
@@ -195,14 +197,15 @@ pub fn repl(eval_input: Option<(&Expr, &str)>) {
                     depth(&expr),
                     compile_func_defns(&vec![expr], com_discard),
                 ),
-                _ => CompileResponse::Expr(
-                    compile_expr_aligned(&expr, Some(&co), Some(com_discard), None),
-                    com_discard.heap_used,
-                ),
+                _ => CompileResponse::Expr(compile_expr_aligned(
+                    &expr,
+                    Some(&co),
+                    Some(com_discard),
+                    None,
+                )),
             }
         });
 
-        let heap_used_before = com.heap_used as i64;
         // Eval with dynasm
         if let Ok(res) = res {
             let instrs = &mut match res {
@@ -261,10 +264,7 @@ pub fn repl(eval_input: Option<(&Expr, &str)>) {
                     }
                     continue;
                 }
-                CompileResponse::Expr(instrs, heap_used) => {
-                    com.heap_used = heap_used;
-                    instrs
-                }
+                CompileResponse::Expr(instrs) => instrs,
             };
 
             for i in &*instrs {
@@ -274,11 +274,20 @@ pub fn repl(eval_input: Option<(&Expr, &str)>) {
             // Add heap reference
             instrs.insert(
                 0,
-                Instr::Mov(MovArgs::ToReg(
-                    Reg::R15,
-                    Arg64::Imm64(define_stack.as_mut_ptr() as i64 + heap_used_before),
-                )),
+                Instr::Mov(MovArgs::ToReg(Reg::R15, Arg64::Imm64(com.curr_heap_ptr))),
             );
+            // Copy heap reference back
+            instrs.push(Instr::Mov(MovArgs::ToReg(
+                Reg::Rbx,
+                Arg64::Imm64(&mut com.curr_heap_ptr as *mut i64 as i64),
+            )));
+            instrs.push(Instr::Mov(MovArgs::ToMem(
+                MemRef {
+                    reg: Reg::Rbx,
+                    offset: 0,
+                },
+                Arg64::OReg(Reg::R15),
+            )));
             print_result(eval(&mut ops, &mut labels, instrs));
         };
 
