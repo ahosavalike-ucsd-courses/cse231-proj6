@@ -33,8 +33,8 @@ The concrete syntax of Eggeater builds on top of Diamondback by adding operators
 //  | (list <expr>)                             // Initialize with size
 //  | (loop (<binding>{1-2} <expr>) <expr>)     // Range over the list
 
-<op1> := add1 | sub1 | isnum | isbool | print (new!)
-<op2> := + | - | * | < | > | >= | <= | =
+<op1> := add1 | sub1 | isnum | isbool | print
+<op2> := + | - | * | < | > | >= | <= | = | ==   // == is structural equality operator
 
 <binding> := (<identifier> <expr>)    
 ```
@@ -42,6 +42,7 @@ The concrete syntax of Eggeater builds on top of Diamondback by adding operators
 * This syntax introduces heap allocated fixed size `list`s with `1` based indexing.
 * Lists can take arbitrary number of elements. Zero size lists become `nil`.
 * The `=` operator can now also check reference equality between lists.
+* The `==` operator can check for structural equality between values including lists.
 * `nil` represents an empty list. It cannot be indexed into. Can only be compared with other lists. Comparing with other types is a dynamic error.
 * `index` returns the element in the given index of the list. `set!` mutates the list's index to have the given value.
 * `index` and the three argument version of `set!` both raise dynamic errors for index out of range, including indexing into `nil`.
@@ -72,7 +73,17 @@ This section shows the tests for the newly introduced syntax. Each test shows th
 (list 1 2 3 4 5)
 ```
 
-The list output is in the same representation as the code.
+
+```bash
+❯ cat ./tests/list_print2.snek
+(let ((x (list 1 2 3))) (print (set! x 1 x)))
+; (output "(list (list <cyclic>) 2 3)" "(list (list <cyclic>) 2 3)")
+❯ ./tests/list_print2.run
+(list (list <cyclic>) 2 3)
+(list (list <cyclic>) 2 3)
+```
+
+The list output is in the same representation as the code, except for cyclic lists.
 
 ```bash
 ❯ cat ./tests/ee_simple_example2.snek
