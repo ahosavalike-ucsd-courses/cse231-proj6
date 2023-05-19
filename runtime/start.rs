@@ -1,3 +1,4 @@
+use std::collections::HashSet;
 use std::env;
 
 #[link(name = "our_code")]
@@ -34,7 +35,7 @@ fn parse_input(input: &str) -> u64 {
     }
 }
 
-fn snek_str(val: i64, seen: &mut Vec<i64>) -> String {
+fn snek_str(val: i64, seen: &mut HashSet<i64>) -> String {
     if val == 7 {
         "true".to_string()
     } else if val == 3 {
@@ -47,7 +48,7 @@ fn snek_str(val: i64, seen: &mut Vec<i64>) -> String {
         if seen.contains(&val) {
             return "(list <cyclic>)".to_string();
         }
-        seen.push(val);
+        seen.insert(val);
         let addr = (val - 1) as *const i64;
         let count = unsafe { *addr } as usize;
         let mut v: Vec<i64> = vec![0; count];
@@ -61,7 +62,7 @@ fn snek_str(val: i64, seen: &mut Vec<i64>) -> String {
                 .collect::<Vec<String>>()
                 .join(" ")
         );
-        seen.pop();
+        seen.remove(&val);
         return result;
     } else {
         format!("Unknown value: {}", val)
@@ -70,18 +71,17 @@ fn snek_str(val: i64, seen: &mut Vec<i64>) -> String {
 
 #[no_mangle]
 #[export_name = "\x01snek_print"]
-fn snek_print(i: i64) -> i64 {
-    let mut seen = Vec::<i64>::new();
-    println!("{}", snek_str(i, &mut seen));
-    return i;
+fn print_result(result: i64) -> i64 {
+    println!("{}", snek_str(result, &mut HashSet::new()));
+    return result;
 }
 
 fn main() {
     let args: Vec<String> = env::args().collect();
     let input = if args.len() == 2 { &args[1] } else { "false" };
     let input = parse_input(&input);
-    let mut mem = vec![0;16384];
+    let mut mem = vec![0; 16384];
 
     let i: i64 = unsafe { our_code_starts_here(input, mem.as_mut_ptr()) };
-    snek_print(i);
+    print_result(i);
 }

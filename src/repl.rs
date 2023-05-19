@@ -1,6 +1,7 @@
 use dynasmrt::{dynasm, x64::Assembler, DynamicLabel, DynasmApi, DynasmLabelApi};
 use im::hashmap;
 use im::HashMap;
+use im::HashSet;
 use sexp::*;
 use std::io::Write;
 use std::mem;
@@ -71,7 +72,7 @@ fn parse_input(input: &str) -> (i64, Type) {
     }
 }
 
-fn snek_str(val: i64, seen: &mut Vec<i64>) -> String {
+fn snek_str(val: i64, seen: &mut HashSet<i64>) -> String {
     if val == 7 {
         "true".to_string()
     } else if val == 3 {
@@ -84,7 +85,7 @@ fn snek_str(val: i64, seen: &mut Vec<i64>) -> String {
         if seen.contains(&val) {
             return "(list <cyclic>)".to_string();
         }
-        seen.push(val);
+        seen.insert(val);
         let addr = (val - 1) as *const i64;
         let count = unsafe { *addr } as usize;
         let mut v: Vec<i64> = vec![0; count];
@@ -98,7 +99,7 @@ fn snek_str(val: i64, seen: &mut Vec<i64>) -> String {
                 .collect::<Vec<String>>()
                 .join(" ")
         );
-        seen.pop();
+        seen.remove(&val);
         return result;
     } else {
         format!("Unknown value: {}", val)
@@ -106,8 +107,7 @@ fn snek_str(val: i64, seen: &mut Vec<i64>) -> String {
 }
 
 fn print_result(result: i64) -> i64 {
-    let mut seen = Vec::<i64>::new();
-    println!("{}", snek_str(result, &mut seen));
+    println!("{}", snek_str(result, &mut HashSet::new()));
     return result;
 }
 
