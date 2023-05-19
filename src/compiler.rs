@@ -911,8 +911,7 @@ pub fn compile_expr(e: &Expr, co: &Context, com: &mut ContextMut) -> Vec<Instr> 
             instrs.push(Mov(co.src_to_target(OReg(R15))));
             instrs.push(Add(co.src_to_target(Imm(1))));
             // Move R15
-            instrs.push(Add(ToReg(R15, Imm64(8 * (1 + es.len() as i64)))));
-            com.heap_used += 1 + es.len() as u64;
+            instrs.push(Add(ToReg(R15, Imm(8 * (1 + es.len() as i32)))));
             com.result_type = Some(List);
         }
         Expr::Define(_, _) => panic!("define cannot be compiled"),
