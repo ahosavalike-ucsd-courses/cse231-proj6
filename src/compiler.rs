@@ -86,7 +86,6 @@ pub fn compile_func_defns(fns: &Vec<Expr>, com: &mut ContextMut) -> Vec<Instr> {
         // No else block as we checked and paniced in preprocessing
         if let Expr::FnDefn(name, vars, body) = f {
             com.depth = com.fns.get_mut(name).unwrap().depth;
-            println!("Depth of {name}: {}", com.depth);
             // Separate context for each function definiton
             let mut co = Context::new(None)
                 .modify_si(vars.len() as i32)
