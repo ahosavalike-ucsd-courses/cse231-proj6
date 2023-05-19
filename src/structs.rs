@@ -20,6 +20,7 @@ pub enum Op2 {
     Minus,
     Times,
     Equal,
+    DeepEqual,
     Greater,
     GreaterEqual,
     Less,
@@ -368,6 +369,7 @@ pub enum Reg {
     Rcx,
     Rbx,
     Rsp,
+    Rsi,
     Rdi,
     R15,
 }
@@ -380,6 +382,7 @@ impl fmt::Display for Reg {
             Rcx => write!(f, "rcx"),
             Rbx => write!(f, "rbx"),
             Rsp => write!(f, "rsp"),
+            Rsi => write!(f, "rsi"),
             Rdi => write!(f, "rdi"),
             R15 => write!(f, "r15"),
         }
@@ -394,6 +397,7 @@ impl Reg {
             Rcx => 1,
             Rbx => 3,
             Rsp => 4,
+            Rsi => 6,
             Rdi => 7,
             R15 => 15,
         }

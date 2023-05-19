@@ -10,9 +10,13 @@ use dynasmrt::DynamicLabel;
 use im::HashSet;
 use im::{hashmap, HashMap};
 
-const TRUE: Arg64 = Imm(7);
-const FALSE: Arg64 = Imm(3);
-const NIL: Arg64 = Imm(1);
+pub const TRUE_VAL: i64 = 7;
+pub const FALSE_VAL: i64 = 3;
+pub const NIL_VAL: i64 = 1;
+
+pub const TRUE: Arg64 = Imm(TRUE_VAL as i32);
+pub const FALSE: Arg64 = Imm(FALSE_VAL as i32);
+pub const NIL: Arg64 = Imm(NIL_VAL as i32);
 
 pub fn depth(e: &Expr) -> i32 {
     match e {
@@ -416,6 +420,26 @@ pub fn compile_expr(e: &Expr, co: &Context, com: &mut ContextMut) -> Vec<Instr> 
                         instrs.push(JumpI(Jump::NZ(snek_error.clone())));
                     }
                     com.result_type = Some(Bool);
+                }
+                Op2::DeepEqual => {
+                    // Early exit
+                    if ltype.is_some() && rtype.is_some() && ltype != rtype {
+                        instrs.push(Mov(ToReg(Rdi, Imm(21)))); // invalid argument
+                        instrs.push(JumpI(Jump::NZ(snek_error.clone())));
+                        com.result_type = Some(Bool);
+                        return instrs;
+                    }
+                    instrs.extend(vec![
+                        // Arguments to rust helper, Rdi later
+                        Mov(ToReg(Rsi, OReg(Rax))),
+                        // Check for same type and early return
+                        Sub(ToReg(Rax, OReg(Rbx))),
+                        Test(ToReg(Rax, Imm(3))),
+                        Mov(ToReg(Rdi, Imm(22))), // invalid argument
+                        JumpI(Jump::NZ(snek_error.clone())),
+                        Mov(ToReg(Rdi, OReg(Rbx))),
+                        Call(Label::new(Some("snek_deep_equal"))),
+                    ]);
                 }
                 _ => {
                     // Check if Rax and mem is a number
