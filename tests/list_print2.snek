@@ -1,0 +1,2 @@
+(let ((x (list 1 2 3))) (print (set! x 1 x)))
+; (output "(list (list <cyclic>) 2 3)" "(list (list <cyclic>) 2 3)")

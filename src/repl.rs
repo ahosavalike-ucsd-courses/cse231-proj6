@@ -51,9 +51,11 @@ fn add_interface_calls(ops: &mut Assembler, lbls: &mut HashMap<Label, DynamicLab
 
     let snek_print_lbl = ops.new_dynamic_label();
     lbls.insert(Label::new(Some("snek_print")), snek_print_lbl);
-    dynasm!(ops; .arch x64; =>snek_print_lbl);
-    dynasm!(ops; .arch x64; mov rax, QWORD print_result as _);
-    dynasm!(ops; .arch x64; call rax; ret);
+    dynasm!(ops; .arch x64; =>snek_print_lbl; mov rax, QWORD print_result as _; call rax; ret);
+
+    let snek_deep_equal_lbl = ops.new_dynamic_label();
+    lbls.insert(Label::new(Some("snek_deep_equal")), snek_deep_equal_lbl);
+    dynasm!(ops; .arch x64; =>snek_deep_equal_lbl; mov rax, QWORD deep_equal as _; call rax; ret);
 }
 
 fn parse_input(input: &str) -> (i64, Type) {
@@ -69,6 +71,44 @@ fn parse_input(input: &str) -> (i64, Type) {
                 (x, Type::List)
             }
         }
+    }
+}
+
+fn deep_equal_recurse(l: i64, r: i64, seen: &mut HashSet<(i64, i64)>) -> bool {
+    // If not list, early exit
+    if l & 3 != 1 || r & 3 != 1 || l == NIL_VAL || r == NIL_VAL {
+        println!("Not list, {l}, {r}");
+        return l == r;
+    }
+
+    if seen.contains(&(l, r)) {
+        return true;
+    }
+    seen.insert((l, r));
+
+    let la = (l - 1) as *const i64;
+    let ra = (r - 1) as *const i64;
+    let lc = unsafe { *la } as isize;
+    let rc = unsafe { *ra } as isize;
+    // Check length
+    if lc != rc {
+        return false;
+    }
+    for i in 1..=lc {
+        let ln = unsafe { *la.offset(i) };
+        let rn = unsafe { *ra.offset(i) };
+        if !deep_equal_recurse(ln, rn, seen) {
+            return false;
+        }
+    }
+    return true;
+}
+
+fn deep_equal(l: i64, r: i64) -> i64 {
+    if deep_equal_recurse(l, r, &mut HashSet::new()) {
+        TRUE_VAL
+    } else {
+        FALSE_VAL
     }
 }
 
@@ -191,7 +231,8 @@ pub fn repl(eval_input: Option<(&Expr, &str)>) {
         // Add top level list
         let keywords = &vec![
             "add1", "sub1", "let", "isnum", "isbool", "if", "loop", "break", "set!", "block",
-            "input", "print", "fun", "define", "+", "-", "*", "<", ">", ">=", "<=", "=",
+            "input", "print", "fun", "define", "nil", "list", "index", "+", "-", "*", "<", ">",
+            ">=", "<=", "=", "==",
         ];
         for k in keywords {
             if line.starts_with(k) {

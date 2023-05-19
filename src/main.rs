@@ -46,6 +46,7 @@ fn main() -> std::io::Result<()> {
         "section .text
 extern snek_error
 extern snek_print
+extern snek_deep_equal
 global our_code_starts_here
 snek_error_stub:
  call snek_error

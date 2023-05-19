@@ -27,6 +27,7 @@ pub fn parse_expr(s: &Sexp) -> Expr {
     let keywords = &vec![
         "add1", "sub1", "let", "isnum", "isbool", "if", "loop", "break", "set!", "block", "input",
         "print", "fun", "define", "nil", "list", "index", "+", "-", "*", "<", ">", ">=", "<=", "=",
+        "==",
     ];
     match s {
         // Num
@@ -144,6 +145,7 @@ pub fn parse_expr(s: &Sexp) -> Expr {
                     "-" => Op2::Minus,
                     "*" => Op2::Times,
                     "=" => Op2::Equal,
+                    "==" => Op2::DeepEqual,
                     ">" => Op2::Greater,
                     "<" => Op2::Less,
                     ">=" => Op2::GreaterEqual,

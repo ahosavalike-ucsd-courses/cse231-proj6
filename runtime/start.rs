@@ -1,13 +1,55 @@
 use std::collections::HashSet;
 use std::env;
 
+const TRUE_VAL: i64 = 7;
+const FALSE_VAL: i64 = 3;
+const NIL_VAL: i64 = 1;
+
 #[link(name = "our_code")]
 extern "C" {
     // The \x01 here is an undocumented feature of LLVM that ensures
     // it does not add an underscore in front of the name.
     // Courtesy of Max New (https://maxsnew.com/teaching/eecs-483-fa22/hw_adder_assignment.html)
     #[link_name = "\x01our_code_starts_here"]
-    fn our_code_starts_here(input: u64, buffer: *mut u64) -> i64;
+    fn our_code_starts_here(input: i64, buffer: *mut u64) -> i64;
+}
+
+fn deep_equal_recurse(l: i64, r: i64, seen: &mut HashSet<(i64, i64)>) -> bool {
+    // If not list, early exit
+    if l & 3 != 1 || r & 3 != 1 || l == NIL_VAL || r == NIL_VAL {
+        return l == r;
+    }
+
+    if seen.contains(&(l, r)) {
+        return true;
+    }
+    seen.insert((l, r));
+
+    let la = (l - 1) as *const i64;
+    let ra = (r - 1) as *const i64;
+    let lc = unsafe { *la } as isize;
+    let rc = unsafe { *ra } as isize;
+    // Check length
+    if lc != rc {
+        return false;
+    }
+    for i in 1..=lc {
+        let ln = unsafe { *la.offset(i) };
+        let rn = unsafe { *ra.offset(i) };
+        if !deep_equal_recurse(ln, rn, seen) {
+            return false;
+        }
+    }
+    return true;
+}
+
+#[export_name = "\x01snek_deep_equal"]
+fn deep_equal(l: i64, r: i64) -> i64 {
+    if deep_equal_recurse(l, r, &mut HashSet::new()) {
+        TRUE_VAL
+    } else {
+        FALSE_VAL
+    }
 }
 
 #[export_name = "\x01snek_error"]
@@ -26,23 +68,23 @@ pub extern "C" fn snek_error(errcode: i64) {
     std::process::exit(1);
 }
 
-fn parse_input(input: &str) -> u64 {
+fn parse_input(input: &str) -> i64 {
     // parse the input string into internal value representation
     match input {
-        "true" => 7,
-        "false" | "" => 3,
-        _ => (input.parse::<i64>().expect("Invalid") as u64) << 1,
+        "true" => TRUE_VAL,
+        "false" | "" => FALSE_VAL,
+        _ => (input.parse::<i64>().expect("Invalid") as i64) << 1,
     }
 }
 
 fn snek_str(val: i64, seen: &mut HashSet<i64>) -> String {
-    if val == 7 {
+    if val == TRUE_VAL {
         "true".to_string()
-    } else if val == 3 {
+    } else if val == FALSE_VAL {
         "false".to_string()
     } else if val % 2 == 0 {
         format!("{}", val >> 1)
-    } else if val == 1 {
+    } else if val == NIL_VAL {
         "nil".to_string()
     } else if val & 1 == 1 {
         if seen.contains(&val) {
