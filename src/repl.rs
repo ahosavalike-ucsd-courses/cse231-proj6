@@ -61,8 +61,8 @@ fn add_interface_calls(ops: &mut Assembler, lbls: &mut HashMap<Label, DynamicLab
 fn parse_input(input: &str) -> (i64, Type) {
     // parse the input string into internal value representation
     match input {
-        "true" => (3, Type::Bool),
-        "false" | "" => (1, Type::Bool),
+        "true" => (TRUE_VAL, Type::Bool),
+        "false" | "" => (FALSE_VAL, Type::Bool),
         x => {
             let x = x.parse::<i64>().expect("Invalid") << 1;
             if x & 1 == 0 {
@@ -113,15 +113,15 @@ fn deep_equal(l: i64, r: i64) -> i64 {
 }
 
 fn snek_str(val: i64, seen: &mut HashSet<i64>) -> String {
-    if val == 7 {
+    if val == TRUE_VAL {
         "true".to_string()
-    } else if val == 3 {
+    } else if val == FALSE_VAL {
         "false".to_string()
     } else if val % 2 == 0 {
         format!("{}", val >> 1)
-    } else if val == 1 {
+    } else if val == NIL_VAL {
         "nil".to_string()
-    } else if val & 1 == 1 {
+    } else if val & 3 == 1 {
         if seen.contains(&val) {
             return "(list <cyclic>)".to_string();
         }
