@@ -1,0 +1,4 @@
+(== (list 1 2) (list 1 input))
+; (output false)
+; ((input 1) (output false))
+; ((input 2) (output true))

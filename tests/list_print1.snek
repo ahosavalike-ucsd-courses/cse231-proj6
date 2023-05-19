@@ -1,0 +1,2 @@
+(print (list 1 nil 3))
+; (output "(list 1 nil 3)" "(list 1 nil 3)")

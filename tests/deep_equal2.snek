@@ -1,0 +1,2 @@
+(== nil (list 1))
+; (output false)

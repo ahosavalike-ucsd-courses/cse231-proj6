@@ -7,6 +7,11 @@ success_tests! {
 		expected: "25",
 	},
 	{
+		name: list_print1_1,
+		file: "list_print1.snek",
+		expected: "(list 1 nil 3)\n(list 1 nil 3)",
+	},
+	{
 		name: ee_simple_example1_1,
 		file: "ee_simple_example1.snek",
 		expected: "(list 1 2 3 4 5)",
@@ -39,6 +44,11 @@ success_tests! {
 		file: "func_nested_mutual_recursive_tail.snek",
 		input: "200",
 		expected: "200",
+	},
+	{
+		name: deep_equal3_1,
+		file: "deep_equal3.snek",
+		expected: "true",
 	},
 	{
 		name: setlst2_1,
@@ -155,6 +165,11 @@ success_tests! {
 		expected: "true",
 	},
 	{
+		name: deep_equal2_1,
+		file: "deep_equal2.snek",
+		expected: "false",
+	},
+	{
 		name: nested_arith0_1,
 		file: "nested_arith0.snek",
 		expected: "35",
@@ -228,6 +243,11 @@ success_tests! {
 	{
 		name: compare_expr_succ2_1,
 		file: "compare_expr_succ2.snek",
+		expected: "true",
+	},
+	{
+		name: deep_equal8_7,
+		file: "deep_equal8.snek",
 		expected: "true",
 	},
 	{
@@ -340,6 +360,11 @@ success_tests! {
 		expected: "9\nfalse\nfalse",
 	},
 	{
+		name: deep_equal7_2,
+		file: "deep_equal7.snek",
+		expected: "true",
+	},
+	{
 		name: func_f2_2,
 		file: "func_f2.snek",
 		expected: "1\n1",
@@ -412,6 +437,23 @@ success_tests! {
 	{
 		name: compare_expr_succ0_1,
 		file: "compare_expr_succ0.snek",
+		expected: "true",
+	},
+	{
+		name: deep_equal1_1,
+		file: "deep_equal1.snek",
+		expected: "false",
+	},
+	{
+		name: deep_equal1_2,
+		file: "deep_equal1.snek",
+		input: "1",
+		expected: "false",
+	},
+	{
+		name: deep_equal1_3,
+		file: "deep_equal1.snek",
+		input: "2",
 		expected: "true",
 	},
 	{
@@ -532,6 +574,11 @@ success_tests! {
 		name: nested_arith2_1,
 		file: "nested_arith2.snek",
 		expected: "0",
+	},
+	{
+		name: list_print2_1,
+		file: "list_print2.snek",
+		expected: "(list (list <cyclic>) 2 3)\n(list (list <cyclic>) 2 3)",
 	},
 	{
 		name: ee_simple_example2_1,
@@ -863,6 +910,11 @@ runtime_error_tests! {
 		file: "setlst4.snek",
 		input: "5",
 		expected: "out of range",
+	},
+	{
+		name: deep_equal4_1,
+		file: "deep_equal4.snek",
+		expected: "invalid argument",
 	},
 	{
 		name: ee_error3_1,
