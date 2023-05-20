@@ -191,30 +191,39 @@ pub fn repl(eval_input: Option<(&Vec<Expr>, &Expr, &str)>) {
             Reg::R15,
             Arg64::Imm64(heap.as_mut_ptr() as i64),
         ))];
-        for fd in eval_fns {
-            if let Expr::FnDefn(f, a, b) = fd {
-                com.fns.insert(
-                    f.clone(),
-                    FunEnv {
-                        argc: a.len() as i32,
-                        depth: depth(&b),
-                    },
-                );
-                labels.insert(
-                    Label::new(Some(&format!("fun_{f}"))),
-                    ops.new_dynamic_label(),
-                );
 
-                instrs_to_asm(
-                    &compile_func_defns(&vec![fd.clone()], &mut com),
-                    &mut ops,
-                    &mut labels,
-                );
-                if let Err(e) = ops.commit() {
-                    println!("{e}");
+        // Setup functions
+        com.fns
+            .extend(eval_fns.iter().fold(hashmap! {}, |mut acc, f| {
+                if let Expr::FnDefn(n, v, b) = f {
+                    if acc.get(n).is_some() {
+                        panic!("function redefined")
+                    }
+                    acc.insert(
+                        n.to_string(),
+                        FunEnv::new(v.len() as i32, depth_aligned(b, v.len() as i32)),
+                    );
+                    return acc;
                 }
-            }
+                // Should not happen, since we are catching it in parse
+                panic!("Invalid: cannot compile anything other than function definitions here")
+            }));
+        labels.extend(com.fns.iter().fold(hashmap! {}, |mut acc, (f, _)| {
+            acc.insert(
+                Label::new(Some(&format!("fun_{f}"))),
+                ops.new_dynamic_label(),
+            );
+            acc
+        }));
+        instrs_to_asm(
+            &compile_func_defns(eval_fns, &mut com),
+            &mut ops,
+            &mut labels,
+        );
+        if let Err(e) = ops.commit() {
+            println!("{e}");
         }
+
         // Setup input
         let (input, is_bool) = parse_input(input);
         instrs.push(Instr::Mov(MovArgs::ToReg(Reg::Rdi, Arg64::Imm64(input))));
@@ -286,7 +295,7 @@ pub fn repl(eval_input: Option<(&Vec<Expr>, &Expr, &str)>) {
                 Expr::FnDefn(f, args, _) => CompileResponse::FnDefn(
                     f.clone(),
                     args.clone(),
-                    depth(&expr),
+                    depth_aligned(&expr, args.len() as i32),
                     compile_func_defns(&vec![expr], com_discard),
                 ),
                 _ => CompileResponse::Expr(compile_expr_aligned(
