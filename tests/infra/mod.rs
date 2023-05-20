@@ -11,21 +11,60 @@ pub(crate) enum TestKind {
 
 #[macro_export]
 macro_rules! success_tests {
-    ($($tt:tt)*) => { $crate::tests!(Success => $($tt)*); }
+    ($($tt:tt)*) => {
+        mod comp_succ { $crate::compile_tests!(Success => $($tt)*); }
+        mod eval_succ { $crate::eval_tests!(Success => $($tt)*); }
+    }
 }
 
 #[macro_export]
 macro_rules! runtime_error_tests {
-    ($($tt:tt)*) => { $crate::tests!(RuntimeError => $($tt)*); }
+    ($($tt:tt)*) => {
+        mod comp_run { $crate::compile_tests!(RuntimeError => $($tt)*); }
+        mod eval_run { $crate::eval_tests!(RuntimeError => $($tt)*); }
+    }
 }
 
 #[macro_export]
 macro_rules! static_error_tests {
-    ($($tt:tt)*) => { $crate::tests!(StaticError => $($tt)*); }
+    ($($tt:tt)*) => {
+        mod comp_stat { $crate::compile_tests!(StaticError => $($tt)*); }
+        mod eval_stat { $crate::eval_tests!(StaticError => $($tt)*); }
+    }
 }
 
 #[macro_export]
-macro_rules! tests {
+macro_rules! success_compile_tests {
+    ($($tt:tt)*) => { mod comp_succ { $crate::compile_tests!(Success => $($tt)*); }}
+}
+
+#[macro_export]
+macro_rules! runtime_error_compile_tests {
+    ($($tt:tt)*) => { mod comp_run { $crate::compile_tests!(RuntimeError => $($tt)*); }}
+}
+
+#[macro_export]
+macro_rules! static_error_compile_tests {
+    ($($tt:tt)*) => { mod comp_stat { $crate::compile_tests!(StaticError => $($tt)*); }}
+}
+
+#[macro_export]
+macro_rules! success_eval_tests {
+    ($($tt:tt)*) => { mod eval_succ { $crate::eval_tests!(Success => $($tt)*); }}
+}
+
+#[macro_export]
+macro_rules! runtime_error_eval_tests {
+    ($($tt:tt)*) => { mod eval_run { $crate::eval_tests!(RuntimeError => $($tt)*); }}
+}
+
+#[macro_export]
+macro_rules! static_error_eval_tests {
+    ($($tt:tt)*) => { mod eval_stat { $crate::eval_tests!(StaticError => $($tt)*); }}
+}
+
+#[macro_export]
+macro_rules! compile_tests {
     ($kind:ident =>
         $(
             {
@@ -45,13 +84,40 @@ macro_rules! tests {
                 let mut input = None;
                 $(input = Some($input);)?
                 let kind = $crate::infra::TestKind::$kind;
-                $crate::infra::run_test(stringify!($name), $file, input, $expected, kind);
+                $crate::infra::run_test_compile(stringify!($name), $file, input, $expected, kind);
             }
         )*
     };
 }
 
-pub(crate) fn run_test(
+#[macro_export]
+macro_rules! eval_tests {
+    ($kind:ident =>
+        $(
+            {
+                name: $name:ident,
+                file: $file:literal,
+                $(input: $input:literal,)?
+                expected: $expected:literal $(,)?
+                $(" $(tt:$tt)* ")?
+            }
+        ),*
+        $(,)?
+    ) => {
+        $(
+            #[test]
+            fn $name() {
+                #[allow(unused_assignments, unused_mut)]
+                let mut input = None;
+                $(input = Some($input);)?
+                let kind = $crate::infra::TestKind::$kind;
+                $crate::infra::run_test_eval($file, input, $expected, kind);
+            }
+        )*
+    };
+}
+
+pub(crate) fn run_test_compile(
     name: &str,
     file: &str,
     input: Option<&str>,
@@ -59,10 +125,35 @@ pub(crate) fn run_test(
     kind: TestKind,
 ) {
     let file = Path::new("tests").join(file);
+
+    // Compile Test
     match kind {
         TestKind::Success => run_success_test(name, &file, expected, input),
         TestKind::RuntimeError => run_runtime_error_test(name, &file, expected, input),
         TestKind::StaticError => run_static_error_test(name, &file, expected),
+    }
+}
+
+pub(crate) fn run_test_eval(file: &str, input: Option<&str>, expected: &str, kind: TestKind) {
+    let file = Path::new("tests").join(file);
+
+    // Eval Test
+    match kind {
+        TestKind::Success => run_success_test_eval(&file, expected, input),
+        TestKind::RuntimeError => run_runtime_error_test_eval(&file, expected, input),
+        TestKind::StaticError => run_static_error_test_eval(&file, expected, input),
+    }
+}
+
+fn run_success_test_eval(file: &Path, expected: &str, input: Option<&str>) {
+    match eval(file, input) {
+        Err(err) => {
+            panic!("eval: expected a successful execution, but got an error: `{err}`");
+        }
+        Ok(actual_output) => {
+            println!("eval:");
+            diff(expected, actual_output);
+        }
     }
 }
 
@@ -80,6 +171,18 @@ fn run_success_test(name: &str, file: &Path, expected: &str, input: Option<&str>
     }
 }
 
+fn run_runtime_error_test_eval(file: &Path, expected: &str, input: Option<&str>) {
+    match eval(file, input) {
+        Ok(out) => {
+            panic!("eval: expected a runtime error, but program executed succesfully: `{out}`");
+        }
+        Err(err) => {
+            println!("eval:");
+            check_error_msg(&err, expected)
+        }
+    }
+}
+
 fn run_runtime_error_test(name: &str, file: &Path, expected: &str, input: Option<&str>) {
     if let Err(err) = compile(name, file) {
         panic!("expected a successful compilation, but got an error: `{err}`");
@@ -89,6 +192,16 @@ fn run_runtime_error_test(name: &str, file: &Path, expected: &str, input: Option
             panic!("expected a runtime error, but program executed succesfully - expected error: `{expected}`, output: `{out}`");
         }
         Err(err) => check_error_msg(&err, expected),
+    }
+}
+
+fn run_static_error_test_eval(file: &Path, expected: &str, input: Option<&str>) {
+    match eval(file, input) {
+        Ok(s) => panic!("eval: expected a failure, but compilation succeeded: {s}"),
+        Err(err) => {
+            println!("eval:");
+            check_error_msg(&err, expected);
+        }
     }
 }
 
@@ -123,6 +236,36 @@ fn compile(name: &str, file: &Path) -> Result<(), String> {
     assert!(output.status.success(), "linking failed");
 
     Ok(())
+}
+
+fn eval(file: &Path, input: Option<&str>) -> Result<String, String> {
+    // Run the compiler
+    let arch = "x86_64-apple-darwin";
+    let mut cmd = Command::new(
+        [
+            "target",
+            arch,
+            "debug",
+            env!("CARGO_PKG_NAME"),
+        ]
+        .iter()
+        .collect::<PathBuf>(),
+    );
+    cmd.args(["-e", &format!("{}", file.to_str().unwrap())]);
+
+    if let Some(input) = input {
+        cmd.arg(input);
+    }
+
+    println!("{:?} {:?}", cmd.get_program(), cmd.get_args());
+
+    let output = cmd.output().expect("eval: could not run the compiler");
+
+    if output.status.success() {
+        Ok(String::from_utf8(output.stdout).unwrap().trim().to_string())
+    } else {
+        Err(String::from_utf8(output.stderr).unwrap().trim().to_string())
+    }
 }
 
 fn run(name: &str, input: Option<&str>) -> Result<String, String> {

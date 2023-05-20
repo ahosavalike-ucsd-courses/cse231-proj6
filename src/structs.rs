@@ -5,7 +5,7 @@ use std::fmt::Debug;
 use dynasmrt::{dynasm, DynamicLabel, DynasmApi, DynasmLabelApi};
 
 // Parser
-#[derive(Debug)]
+#[derive(Clone, Debug)]
 pub enum Op1 {
     Add1,
     Sub1,
@@ -14,7 +14,7 @@ pub enum Op1 {
     Print,
 }
 
-#[derive(Debug)]
+#[derive(Clone, Debug)]
 pub enum Op2 {
     Plus,
     Minus,
@@ -28,7 +28,7 @@ pub enum Op2 {
     Index,
 }
 
-#[derive(Debug)]
+#[derive(Clone, Debug)]
 pub enum Expr {
     Nil,
     Num(i64),
@@ -634,12 +634,12 @@ impl Instr {
             },
             CMovI(c) => c.asm(ops),
             Mul(r, a) => match a {
-                OReg(r) => dynasm!(ops; .arch x64; imul Rq(r.asm()), Rq(r.asm())),
+                OReg(or) => dynasm!(ops; .arch x64; imul Rq(r.asm()), Rq(or.asm())),
                 Mem(m) => dynasm!(ops; .arch x64; imul Rq(r.asm()), [Rq(m.reg.asm()) + m.offset*8]),
                 _ => panic!("mul does not support this operand"),
             },
             Xor(r, a) => match a {
-                OReg(r) => dynasm!(ops; .arch x64; xor Rq(r.asm()), Rq(r.asm())),
+                OReg(or) => dynasm!(ops; .arch x64; xor Rq(r.asm()), Rq(or.asm())),
                 Mem(m) => dynasm!(ops; .arch x64; xor Rq(r.asm()), [Rq(m.reg.asm()) + m.offset*8]),
                 Imm(n) => dynasm!(ops; .arch x64; xor Rq(r.asm()), DWORD *n),
                 Imm64(_) => panic!("cannot add with imm64"),

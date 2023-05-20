@@ -18,7 +18,7 @@ pub const TRUE: Arg64 = Imm(TRUE_VAL as i32);
 pub const FALSE: Arg64 = Imm(FALSE_VAL as i32);
 pub const NIL: Arg64 = Imm(NIL_VAL as i32);
 
-pub fn depth(e: &Expr) -> i32 {
+fn depth(e: &Expr) -> i32 {
     match e {
         Expr::Nil => 0,
         Expr::Num(_) => 0,
@@ -53,7 +53,7 @@ pub fn depth(e: &Expr) -> i32 {
     }
 }
 
-fn depth_aligned(e: &Expr, extra: i32) -> i32 {
+pub fn depth_aligned(e: &Expr, extra: i32) -> i32 {
     // Off aligned 16byte depth
     let d = depth(e) + extra;
     if d % 2 != 0 {
@@ -86,7 +86,6 @@ pub fn compile_func_defns(fns: &Vec<Expr>, com: &mut ContextMut) -> Vec<Instr> {
         // No else block as we checked and paniced in preprocessing
         if let Expr::FnDefn(name, vars, body) = f {
             com.depth = com.fns.get_mut(name).unwrap().depth;
-            println!("Depth of {name}: {}", com.depth);
             // Separate context for each function definiton
             let mut co = Context::new(None)
                 .modify_si(vars.len() as i32)

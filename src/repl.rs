@@ -19,6 +19,7 @@ fn snek_error_exit(errcode: i64) {
             1 => "invalid representation",
             i if i >= 20 && i <= 29 => "invalid argument",
             i if i >= 30 && i <= 39 => "overflow",
+            i if i == 40 => "index out of range",
             _ => "",
         }
     );
@@ -33,6 +34,7 @@ fn snek_error_print(errcode: i64) {
             1 => "invalid representation",
             i if i >= 20 && i <= 29 => "invalid argument",
             i if i >= 30 && i <= 39 => "overflow",
+            i if i == 40 => "index out of range",
             _ => "",
         }
     );
@@ -45,6 +47,8 @@ fn add_interface_calls(ops: &mut Assembler, lbls: &mut HashMap<Label, DynamicLab
     if exit {
         dynasm!(ops; .arch x64; mov rax, QWORD snek_error_exit as _);
     } else {
+        // TODO: Make it gracefully handle being called from inside functions.
+        // Rsp will be incorrect after this returns
         dynasm!(ops; .arch x64; mov rax, QWORD snek_error_print as _);
     }
     dynasm!(ops; .arch x64; call rax; ret);
@@ -61,8 +65,8 @@ fn add_interface_calls(ops: &mut Assembler, lbls: &mut HashMap<Label, DynamicLab
 fn parse_input(input: &str) -> (i64, Type) {
     // parse the input string into internal value representation
     match input {
-        "true" => (3, Type::Bool),
-        "false" | "" => (1, Type::Bool),
+        "true" => (TRUE_VAL, Type::Bool),
+        "false" | "" => (FALSE_VAL, Type::Bool),
         x => {
             let x = x.parse::<i64>().expect("Invalid") << 1;
             if x & 1 == 0 {
@@ -77,7 +81,6 @@ fn parse_input(input: &str) -> (i64, Type) {
 fn deep_equal_recurse(l: i64, r: i64, seen: &mut HashSet<(i64, i64)>) -> bool {
     // If not list, early exit
     if l & 3 != 1 || r & 3 != 1 || l == NIL_VAL || r == NIL_VAL {
-        println!("Not list, {l}, {r}");
         return l == r;
     }
 
@@ -113,15 +116,15 @@ fn deep_equal(l: i64, r: i64) -> i64 {
 }
 
 fn snek_str(val: i64, seen: &mut HashSet<i64>) -> String {
-    if val == 7 {
+    if val == TRUE_VAL {
         "true".to_string()
-    } else if val == 3 {
+    } else if val == FALSE_VAL {
         "false".to_string()
     } else if val % 2 == 0 {
         format!("{}", val >> 1)
-    } else if val == 1 {
+    } else if val == NIL_VAL {
         "nil".to_string()
-    } else if val & 1 == 1 {
+    } else if val & 3 == 1 {
         if seen.contains(&val) {
             return "(list <cyclic>)".to_string();
         }
@@ -172,7 +175,7 @@ fn eval(
     jitted_fn()
 }
 
-pub fn repl(eval_input: Option<(&Expr, &str)>) {
+pub fn repl(eval_input: Option<(&Vec<Expr>, &Expr, &str)>) {
     // Initial define stack size low to see reallocations
     let mut define_stack: Vec<u64> = vec![0; 1];
     let mut heap: Vec<u64> = vec![0; 16384];
@@ -185,12 +188,45 @@ pub fn repl(eval_input: Option<(&Expr, &str)>) {
     let mut labels: HashMap<Label, DynamicLabel> = hashmap! {};
 
     // Eval
-    if let Some((eval_in, input)) = eval_input {
+    if let Some((eval_fns, eval_in, input)) = eval_input {
         add_interface_calls(&mut ops, &mut labels, true);
         let mut instrs: Vec<Instr> = vec![Instr::Mov(MovArgs::ToReg(
             Reg::R15,
             Arg64::Imm64(heap.as_mut_ptr() as i64),
         ))];
+
+        // Setup functions
+        com.fns
+            .extend(eval_fns.iter().fold(hashmap! {}, |mut acc, f| {
+                if let Expr::FnDefn(n, v, _) = f {
+                    if acc.get(n).is_some() {
+                        panic!("function redefined")
+                    }
+                    acc.insert(
+                        n.to_string(),
+                        FunEnv::new(v.len() as i32, depth_aligned(f, 0)),
+                    );
+                    return acc;
+                }
+                // Should not happen, since we are catching it in parse
+                panic!("Invalid: cannot compile anything other than function definitions here")
+            }));
+        labels.extend(com.fns.iter().fold(hashmap! {}, |mut acc, (f, _)| {
+            acc.insert(
+                Label::new(Some(&format!("fun_{f}"))),
+                ops.new_dynamic_label(),
+            );
+            acc
+        }));
+        instrs_to_asm(
+            &compile_func_defns(eval_fns, &mut com),
+            &mut ops,
+            &mut labels,
+        );
+        if let Err(e) = ops.commit() {
+            println!("{e}");
+        }
+
         // Setup input
         let (input, is_bool) = parse_input(input);
         instrs.push(Instr::Mov(MovArgs::ToReg(Reg::Rdi, Arg64::Imm64(input))));
@@ -262,7 +298,7 @@ pub fn repl(eval_input: Option<(&Expr, &str)>) {
                 Expr::FnDefn(f, args, _) => CompileResponse::FnDefn(
                     f.clone(),
                     args.clone(),
-                    depth(&expr),
+                    depth_aligned(&expr, 0),
                     compile_func_defns(&vec![expr], com_discard),
                 ),
                 _ => CompileResponse::Expr(compile_expr_aligned(
@@ -294,7 +330,7 @@ pub fn repl(eval_input: Option<(&Expr, &str)>) {
                         ),
                     );
 
-                    // Move RAX to heap
+                    // Move RAX to define stack
                     instrs.push(Instr::Mov(MovArgs::ToReg(
                         Reg::Rbx,
                         Arg64::Imm64(co.get_define_stack()),
@@ -316,12 +352,7 @@ pub fn repl(eval_input: Option<(&Expr, &str)>) {
                             depth,
                         },
                     );
-                    labels.insert(
-                        Label::new(Some(&format!("fun_{f}"))),
-                        ops.new_dynamic_label(),
-                    );
 
-                    // dynasm!(ops; .arch x64; => fun_lbl);
                     instrs_to_asm(&instrs, &mut ops, &mut labels);
                     if let Err(e) = ops.commit() {
                         println!("{e}");
