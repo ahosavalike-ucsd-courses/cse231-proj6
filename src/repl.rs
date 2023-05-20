@@ -350,12 +350,7 @@ pub fn repl(eval_input: Option<(&Vec<Expr>, &Expr, &str)>) {
                             depth,
                         },
                     );
-                    labels.insert(
-                        Label::new(Some(&format!("fun_{f}"))),
-                        ops.new_dynamic_label(),
-                    );
 
-                    // dynasm!(ops; .arch x64; => fun_lbl);
                     instrs_to_asm(&instrs, &mut ops, &mut labels);
                     if let Err(e) = ops.commit() {
                         println!("{e}");
