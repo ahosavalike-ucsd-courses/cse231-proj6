@@ -32,6 +32,7 @@ fn main() -> std::io::Result<()> {
 
     if args[1] == "-e" {
         return Ok(repl(Some((
+            &funcs,
             &expr,
             if args.len() > 3 { &args[3] } else { "false" },
         ))));

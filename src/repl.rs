@@ -172,7 +172,7 @@ fn eval(
     jitted_fn()
 }
 
-pub fn repl(eval_input: Option<(&Expr, &str)>) {
+pub fn repl(eval_input: Option<(&Vec<Expr>, &Expr, &str)>) {
     // Initial define stack size low to see reallocations
     let mut define_stack: Vec<u64> = vec![0; 1];
     let mut heap: Vec<u64> = vec![0; 16384];
@@ -185,12 +185,36 @@ pub fn repl(eval_input: Option<(&Expr, &str)>) {
     let mut labels: HashMap<Label, DynamicLabel> = hashmap! {};
 
     // Eval
-    if let Some((eval_in, input)) = eval_input {
+    if let Some((eval_fns, eval_in, input)) = eval_input {
         add_interface_calls(&mut ops, &mut labels, true);
         let mut instrs: Vec<Instr> = vec![Instr::Mov(MovArgs::ToReg(
             Reg::R15,
             Arg64::Imm64(heap.as_mut_ptr() as i64),
         ))];
+        for fd in eval_fns {
+            if let Expr::FnDefn(f, a, b) = fd {
+                com.fns.insert(
+                    f.clone(),
+                    FunEnv {
+                        argc: a.len() as i32,
+                        depth: depth(&b),
+                    },
+                );
+                labels.insert(
+                    Label::new(Some(&format!("fun_{f}"))),
+                    ops.new_dynamic_label(),
+                );
+
+                instrs_to_asm(
+                    &compile_func_defns(&vec![fd.clone()], &mut com),
+                    &mut ops,
+                    &mut labels,
+                );
+                if let Err(e) = ops.commit() {
+                    println!("{e}");
+                }
+            }
+        }
         // Setup input
         let (input, is_bool) = parse_input(input);
         instrs.push(Instr::Mov(MovArgs::ToReg(Reg::Rdi, Arg64::Imm64(input))));
