@@ -19,6 +19,7 @@ fn snek_error_exit(errcode: i64) {
             1 => "invalid representation",
             i if i >= 20 && i <= 29 => "invalid argument",
             i if i >= 30 && i <= 39 => "overflow",
+            i if i == 40 => "index out of range",
             _ => "",
         }
     );
@@ -77,7 +78,6 @@ fn parse_input(input: &str) -> (i64, Type) {
 fn deep_equal_recurse(l: i64, r: i64, seen: &mut HashSet<(i64, i64)>) -> bool {
     // If not list, early exit
     if l & 3 != 1 || r & 3 != 1 || l == NIL_VAL || r == NIL_VAL {
-        println!("Not list, {l}, {r}");
         return l == r;
     }
 
