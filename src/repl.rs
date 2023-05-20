@@ -195,13 +195,13 @@ pub fn repl(eval_input: Option<(&Vec<Expr>, &Expr, &str)>) {
         // Setup functions
         com.fns
             .extend(eval_fns.iter().fold(hashmap! {}, |mut acc, f| {
-                if let Expr::FnDefn(n, v, b) = f {
+                if let Expr::FnDefn(n, v, _) = f {
                     if acc.get(n).is_some() {
                         panic!("function redefined")
                     }
                     acc.insert(
                         n.to_string(),
-                        FunEnv::new(v.len() as i32, depth_aligned(b, v.len() as i32)),
+                        FunEnv::new(v.len() as i32, depth_aligned(f, 0)),
                     );
                     return acc;
                 }
@@ -295,7 +295,7 @@ pub fn repl(eval_input: Option<(&Vec<Expr>, &Expr, &str)>) {
                 Expr::FnDefn(f, args, _) => CompileResponse::FnDefn(
                     f.clone(),
                     args.clone(),
-                    depth_aligned(&expr, args.len() as i32),
+                    depth_aligned(&expr, 0),
                     compile_func_defns(&vec![expr], com_discard),
                 ),
                 _ => CompileResponse::Expr(compile_expr_aligned(
