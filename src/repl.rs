@@ -47,6 +47,8 @@ fn add_interface_calls(ops: &mut Assembler, lbls: &mut HashMap<Label, DynamicLab
     if exit {
         dynasm!(ops; .arch x64; mov rax, QWORD snek_error_exit as _);
     } else {
+        // TODO: Make it gracefully handle being called from inside functions.
+        // Rsp will be incorrect after this returns
         dynasm!(ops; .arch x64; mov rax, QWORD snek_error_print as _);
     }
     dynasm!(ops; .arch x64; call rax; ret);
@@ -328,7 +330,7 @@ pub fn repl(eval_input: Option<(&Vec<Expr>, &Expr, &str)>) {
                         ),
                     );
 
-                    // Move RAX to heap
+                    // Move RAX to define stack
                     instrs.push(Instr::Mov(MovArgs::ToReg(
                         Reg::Rbx,
                         Arg64::Imm64(co.get_define_stack()),
