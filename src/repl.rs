@@ -366,10 +366,11 @@ pub fn repl(eval_input: Option<(&Vec<Expr>, &Expr, &str)>) {
                 CompileResponse::Expr(instrs) => instrs,
             };
 
-            for i in &*instrs {
-                println!("{i:?}");
-            }
-
+            // Set input to false for now
+            instrs.insert(
+                0,
+                Instr::Mov(MovArgs::ToReg(Reg::Rdi, Arg64::Imm64(FALSE_VAL))),
+            );
             // Add heap reference
             instrs.insert(
                 0,
@@ -387,6 +388,10 @@ pub fn repl(eval_input: Option<(&Vec<Expr>, &Expr, &str)>) {
                 },
                 Arg64::OReg(Reg::R15),
             )));
+
+            for i in &*instrs {
+                println!("{i:?}");
+            }
             print_result(eval(&mut ops, &mut labels, instrs));
         };
 
