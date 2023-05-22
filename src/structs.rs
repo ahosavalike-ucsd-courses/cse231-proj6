@@ -369,8 +369,10 @@ pub enum Reg {
     Rcx,
     Rbx,
     Rsp,
+    Rbp,
     Rsi,
     Rdi,
+    R14,
     R15,
 }
 use Reg::*;
@@ -382,8 +384,10 @@ impl fmt::Display for Reg {
             Rcx => write!(f, "rcx"),
             Rbx => write!(f, "rbx"),
             Rsp => write!(f, "rsp"),
+            Rbp => write!(f, "rbp"),
             Rsi => write!(f, "rsi"),
             Rdi => write!(f, "rdi"),
+            R14 => write!(f, "r14"),
             R15 => write!(f, "r15"),
         }
     }
@@ -397,8 +401,10 @@ impl Reg {
             Rcx => 1,
             Rbx => 3,
             Rsp => 4,
+            Rbp => 5,
             Rsi => 6,
             Rdi => 7,
+            R14 => 14,
             R15 => 15,
         }
     }

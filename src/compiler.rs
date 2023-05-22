@@ -132,6 +132,8 @@ pub fn compile_expr_aligned(
     com.depth = depth_aligned(e, if let Some(_) = input { 3 } else { 2 }); // 1 extra for input
 
     let mut instrs: Vec<Instr> = vec![
+        // Heap's second word saves the initial RSP, used to restore on runtime error
+        Mov(ToMem(MemRef { reg: R15, offset: 1 }, OReg(Rsp))),
         Sub(ToReg(Rsp, Imm(com.depth * 8))),
         Mov(ToMem(
             MemRef {
@@ -906,10 +908,18 @@ pub fn compile_expr(e: &Expr, co: &Context, com: &mut ContextMut) -> Vec<Instr> 
                 ));
             }
 
+            // Get heap head
+            instrs.push(Mov(ToReg(
+                Rbx,
+                Mem(MemRef {
+                    reg: R15,
+                    offset: 0,
+                }),
+            )));
             // Length as the first value
             instrs.push(Mov(ToMem(
                 MemRef {
-                    reg: R15,
+                    reg: Rbx,
                     offset: 0,
                 },
                 Imm64(es.len() as i64),
@@ -924,17 +934,23 @@ pub fn compile_expr(e: &Expr, co: &Context, com: &mut ContextMut) -> Vec<Instr> 
                 )));
                 instrs.push(Mov(ToMem(
                     MemRef {
-                        reg: R15,
+                        reg: Rbx,
                         offset: i + 1, // 1st word is length
                     },
                     OReg(Rax),
                 )));
             }
             // Set target to address and tag with 1
-            instrs.push(Mov(co.src_to_target(OReg(R15))));
+            instrs.push(Mov(co.src_to_target(OReg(Rbx))));
             instrs.push(Add(co.src_to_target(Imm(1))));
-            // Move R15
-            instrs.push(Add(ToReg(R15, Imm(8 * (1 + es.len() as i32)))));
+            // Move heap offset
+            instrs.push(Add(ToMem(
+                MemRef {
+                    reg: R15,
+                    offset: 0,
+                },
+                Imm(8 * (1 + es.len() as i32)),
+            )));
             com.result_type = Some(List);
         }
         Expr::Define(_, _) => panic!("define cannot be compiled"),

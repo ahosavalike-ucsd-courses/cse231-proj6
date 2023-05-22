@@ -51,7 +51,12 @@ fn add_interface_calls(ops: &mut Assembler, lbls: &mut HashMap<Label, DynamicLab
         // Rsp will be incorrect after this returns
         dynasm!(ops; .arch x64; mov rax, QWORD snek_error_print as _);
     }
-    dynasm!(ops; .arch x64; call rax; ret);
+    dynasm!(ops;
+        .arch x64;
+        mov rsp, [r15 + 8];
+        call rax;
+        ret
+    );
 
     let snek_print_lbl = ops.new_dynamic_label();
     lbls.insert(Label::new(Some("snek_print")), snek_print_lbl);
@@ -179,6 +184,11 @@ pub fn repl(eval_input: Option<(&Vec<Expr>, &Expr, &str)>) {
     // Initial define stack size low to see reallocations
     let mut define_stack: Vec<u64> = vec![0; 1];
     let mut heap: Vec<u64> = vec![0; 16384];
+
+    // Placeholder for offset
+    heap[0] = unsafe { heap.as_mut_ptr().offset(2) } as u64;
+    // Placeholder for Rsp base
+    heap[1] = 0;
 
     let mut co = Context::new(Some(define_stack.as_mut_ptr())).modify_si(1);
     let mut com = ContextMut::new();
@@ -366,27 +376,20 @@ pub fn repl(eval_input: Option<(&Vec<Expr>, &Expr, &str)>) {
                 CompileResponse::Expr(instrs) => instrs,
             };
 
-            for i in &*instrs {
-                println!("{i:?}");
-            }
-
+            // Set input to false for now
+            instrs.insert(
+                0,
+                Instr::Mov(MovArgs::ToReg(Reg::Rdi, Arg64::Imm64(FALSE_VAL))),
+            );
             // Add heap reference
             instrs.insert(
                 0,
                 Instr::Mov(MovArgs::ToReg(Reg::R15, Arg64::Imm64(com.curr_heap_ptr))),
             );
-            // Copy heap reference back
-            instrs.push(Instr::Mov(MovArgs::ToReg(
-                Reg::Rbx,
-                Arg64::Imm64(&mut com.curr_heap_ptr as *mut i64 as i64),
-            )));
-            instrs.push(Instr::Mov(MovArgs::ToMem(
-                MemRef {
-                    reg: Reg::Rbx,
-                    offset: 0,
-                },
-                Arg64::OReg(Reg::R15),
-            )));
+
+            for i in &*instrs {
+                println!("{i:?}");
+            }
             print_result(eval(&mut ops, &mut labels, instrs));
         };
 

@@ -51,13 +51,16 @@ The concrete syntax of Eggeater builds on top of Diamondback by adding operators
 
 This compiler implements a simple heap structure with memory drawn from the Rust's `Vec<u64>`. Each list has an extra word at the very beginning to indicate the length of the list. Heap grows sequentially forward (to higher memory addresses). Garbage collection is not implemented. Heap has a fixed size of `16384` words or `128KiB`.
 
-E.g. `(list 1 2 3 nil)` would translate to the following layout, assuming a `0x100` start address.
+E.g. `(list 1 2 3 nil)` would translate to the following layout, assuming a `0x100` address is the first usable spot on the heap.
 
 |||Heap|||
 |:-:|:-:|:-:|:-:|:-:|
 |0x100|0x108|0x110|0x118|0x120|
 |4(len)| 2(1) | 4(2) | 6(3) | 1(nil) |
 |||||
+
+
+The first word at the beginning of the heap contains the address of a usable space in the heap and the second word is reserved for saving `RSP` to be restored on runtime errors. The rest of the heap is used by the `list`s.
 
 ## Tests
 

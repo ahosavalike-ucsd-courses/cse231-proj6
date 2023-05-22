@@ -122,8 +122,13 @@ fn main() {
     let args: Vec<String> = env::args().collect();
     let input = if args.len() == 2 { &args[1] } else { "false" };
     let input = parse_input(&input);
-    let mut mem = vec![0; 16384];
+    let mut heap = vec![0; 16384];
+    // Placeholder for offset
+    heap[0] = unsafe { heap.as_mut_ptr().offset(2) } as u64;
+    // Placeholder for Rsp base
+    heap[1] = 0;
 
-    let i: i64 = unsafe { our_code_starts_here(input, mem.as_mut_ptr()) };
+    let i: i64 = unsafe { our_code_starts_here(input, heap.as_mut_ptr()) };
+    
     print_result(i);
 }
