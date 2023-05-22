@@ -32,7 +32,7 @@ pub fn parse_expr(s: &Sexp) -> Expr {
     match s {
         // Num
         Sexp::Atom(I(n)) => Expr::Num(i64::try_from(*n).expect("Invalid")),
-        // Boolean
+        // Boolean/Nil/Variable
         Sexp::Atom(S(x)) => match x.as_str() {
             "true" => Expr::Boolean(true),
             "false" => Expr::Boolean(false),
@@ -107,14 +107,25 @@ pub fn parse_expr(s: &Sexp) -> Expr {
             },
             // Set!
             [Sexp::Atom(S(op)), Sexp::Atom(S(x)), b] if op == "set!" => {
+                if x == "input" {
+                    panic!("Cannot set! on input");
+                }
                 Expr::Set(x.to_string(), Box::new(parse_expr(b)))
             }
             // Set! List
-            [Sexp::Atom(S(op)), lst, idx, val] if op == "set!" => Expr::SetLst(
-                Box::new(parse_expr(lst)),
-                Box::new(parse_expr(idx)),
-                Box::new(parse_expr(val)),
-            ),
+            [Sexp::Atom(S(op)), lst, idx, val] if op == "set!" => {
+                let lst = parse_expr(lst);
+                if let Expr::Var(x) = &lst {
+                    if x == "input" {
+                        panic!("Cannot set! on input");
+                    }
+                }
+                Expr::SetLst(
+                    Box::new(lst),
+                    Box::new(parse_expr(idx)),
+                    Box::new(parse_expr(val)),
+                )
+            }
             // Let
             [Sexp::Atom(S(op)), Sexp::List(bindings), e] if op == "let" => {
                 if bindings.len() == 0 {

@@ -67,19 +67,15 @@ fn add_interface_calls(ops: &mut Assembler, lbls: &mut HashMap<Label, DynamicLab
     dynasm!(ops; .arch x64; =>snek_deep_equal_lbl; mov rax, QWORD deep_equal as _; call rax; ret);
 }
 
-fn parse_input(input: &str) -> (i64, Type) {
+fn parse_input(input: &str) -> (i64, Option<Type>) {
     // parse the input string into internal value representation
     match input {
-        "true" => (TRUE_VAL, Type::Bool),
-        "false" | "" => (FALSE_VAL, Type::Bool),
-        x => {
-            let x = x.parse::<i64>().expect("Invalid") << 1;
-            if x & 1 == 0 {
-                (x, Type::Int)
-            } else {
-                (x, Type::List)
-            }
-        }
+        "true" => (TRUE_VAL, Some(Type::Bool)),
+        "false" | "" => (FALSE_VAL, Some(Type::Bool)),
+        _ => (
+            (input.parse::<i64>().expect("Invalid") as i64) << 1,
+            Some(Type::Int),
+        ),
     }
 }
 
@@ -197,8 +193,10 @@ pub fn repl(eval_input: Option<(&Vec<Expr>, &Expr, &str)>) {
     let mut ops = Assembler::new().unwrap();
     let mut labels: HashMap<Label, DynamicLabel> = hashmap! {};
 
+    let mut input = (FALSE_VAL, Some(Type::Bool));
+
     // Eval
-    if let Some((eval_fns, eval_in, input)) = eval_input {
+    if let Some((eval_fns, eval_in, input_str)) = eval_input {
         add_interface_calls(&mut ops, &mut labels, true);
         let mut instrs: Vec<Instr> = vec![Instr::Mov(MovArgs::ToReg(
             Reg::R15,
@@ -238,14 +236,14 @@ pub fn repl(eval_input: Option<(&Vec<Expr>, &Expr, &str)>) {
         }
 
         // Setup input
-        let (input, is_bool) = parse_input(input);
-        instrs.push(Instr::Mov(MovArgs::ToReg(Reg::Rdi, Arg64::Imm64(input))));
+        input = parse_input(input_str);
+        instrs.push(Instr::Mov(MovArgs::ToReg(Reg::Rdi, Arg64::Imm64(input.0))));
 
         instrs.extend(compile_expr_aligned(
             eval_in,
             Some(&co),
             Some(&mut com),
-            Some(is_bool),
+            input.1,
         ));
         print_result(eval(&mut ops, &mut labels, &mut instrs));
         return;
@@ -277,8 +275,8 @@ pub fn repl(eval_input: Option<(&Vec<Expr>, &Expr, &str)>) {
         // Add top level list
         let keywords = &vec![
             "add1", "sub1", "let", "isnum", "isbool", "if", "loop", "break", "set!", "block",
-            "input", "print", "fun", "define", "nil", "list", "index", "+", "-", "*", "<", ">",
-            ">=", "<=", "=", "==",
+            "print", "fun", "define", "nil", "list", "index", "+", "-", "*", "<", ">", ">=", "<=",
+            "=", "==",
         ];
         for k in keywords {
             if line.starts_with(k) {
@@ -302,7 +300,7 @@ pub fn repl(eval_input: Option<(&Vec<Expr>, &Expr, &str)>) {
             match &expr {
                 Expr::Define(x, e) => CompileResponse::Define(
                     x.clone(),
-                    compile_expr_aligned(&e, Some(&co), Some(com_discard), None),
+                    compile_expr_aligned(&e, Some(&co), Some(com_discard), input.1),
                     com_discard.result_type,
                 ),
                 Expr::FnDefn(f, args, _) => CompileResponse::FnDefn(
@@ -315,7 +313,7 @@ pub fn repl(eval_input: Option<(&Vec<Expr>, &Expr, &str)>) {
                     &expr,
                     Some(&co),
                     Some(com_discard),
-                    None,
+                    input.1,
                 )),
             }
         });
@@ -323,7 +321,24 @@ pub fn repl(eval_input: Option<(&Vec<Expr>, &Expr, &str)>) {
         // Eval with dynasm
         if let Ok(res) = res {
             let instrs = &mut match res {
-                CompileResponse::Define(x, mut instrs, is_bool) => {
+                CompileResponse::Define(x, mut instrs, vtype) if x == "input" => {
+                    input.1 = vtype;
+
+                    // Move RAX to input.0
+                    instrs.push(Instr::Mov(MovArgs::ToReg(
+                        Reg::Rbx,
+                        Arg64::Imm64(&input.0 as *const i64 as i64),
+                    )));
+                    instrs.push(Instr::Mov(MovArgs::ToMem(
+                        MemRef {
+                            reg: Reg::Rbx,
+                            offset: 0,
+                        },
+                        Arg64::OReg(Reg::Rax),
+                    )));
+                    instrs
+                }
+                CompileResponse::Define(x, mut instrs, vtype) => {
                     // Update even if present, type might have changed
                     co.env.insert(
                         x.to_string(),
@@ -335,7 +350,7 @@ pub fn repl(eval_input: Option<(&Vec<Expr>, &Expr, &str)>) {
                             } else {
                                 co.env.get(&x).unwrap().offset
                             },
-                            is_bool,
+                            vtype,
                             true,
                         ),
                     );
@@ -379,7 +394,7 @@ pub fn repl(eval_input: Option<(&Vec<Expr>, &Expr, &str)>) {
             // Set input to false for now
             instrs.insert(
                 0,
-                Instr::Mov(MovArgs::ToReg(Reg::Rdi, Arg64::Imm64(FALSE_VAL))),
+                Instr::Mov(MovArgs::ToReg(Reg::Rdi, Arg64::Imm64(input.0))),
             );
             // Add heap reference
             instrs.insert(
