@@ -129,12 +129,11 @@ pub fn compile_expr_aligned(
     }
     let com = com_;
 
-    com.depth = depth_aligned(e, if let Some(_) = input { 2 } else { 1 }); // 1 extra for input
+    com.depth = depth_aligned(e, if let Some(_) = input { 3 } else { 2 }); // 1 extra for input
 
     let mut instrs: Vec<Instr> = vec![
-        // R14 saves the initial RSP, used to restore on runtime error
-        Push(R14),
-        Mov(ToReg(R14, OReg(Rsp))),
+        // Heap's second word saves the initial RSP, used to restore on runtime error
+        Mov(ToMem(MemRef { reg: R15, offset: 1 }, OReg(Rsp))),
         Sub(ToReg(Rsp, Imm(com.depth * 8))),
         Mov(ToMem(
             MemRef {
@@ -153,7 +152,6 @@ pub fn compile_expr_aligned(
         com,
     ));
     instrs.push(Add(ToReg(Rsp, Imm(com.depth * 8))));
-    instrs.push(Pop(R14));
     return instrs;
 }
 

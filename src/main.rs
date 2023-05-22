@@ -50,8 +50,7 @@ extern snek_print
 extern snek_deep_equal
 global our_code_starts_here
 snek_error_stub:
- mov rsp, r14
- pop r14
+ mov rsp, [r15 + 8] ; 2nd word in heap
  call snek_error
  ret
 

@@ -53,8 +53,7 @@ fn add_interface_calls(ops: &mut Assembler, lbls: &mut HashMap<Label, DynamicLab
     }
     dynasm!(ops;
         .arch x64;
-        mov rsp, r14 ;
-        pop r14;
+        mov rsp, [r15 + 8];
         call rax;
         ret
     );
