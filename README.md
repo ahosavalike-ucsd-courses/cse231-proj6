@@ -38,3 +38,7 @@ Move stack up by the depth of the function body + number of arguments to the fun
 |   ret ptr   |  [rsp] ; At call to main
 +-------------+
 ```
+
+## Heap layout
+
+The first two words are for tracking offsets and Rsp base.
