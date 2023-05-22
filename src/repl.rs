@@ -51,7 +51,13 @@ fn add_interface_calls(ops: &mut Assembler, lbls: &mut HashMap<Label, DynamicLab
         // Rsp will be incorrect after this returns
         dynasm!(ops; .arch x64; mov rax, QWORD snek_error_print as _);
     }
-    dynasm!(ops; .arch x64; call rax; ret);
+    dynasm!(ops;
+        .arch x64;
+        mov rsp, r14 ;
+        pop r14;
+        call rax;
+        ret
+    );
 
     let snek_print_lbl = ops.new_dynamic_label();
     lbls.insert(Label::new(Some("snek_print")), snek_print_lbl);
