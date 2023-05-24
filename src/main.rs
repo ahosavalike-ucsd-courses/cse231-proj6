@@ -9,6 +9,7 @@ mod compiler;
 use compiler::*;
 mod repl;
 use repl::*;
+mod repl_helper;
 mod structs;
 use structs::*;
 
