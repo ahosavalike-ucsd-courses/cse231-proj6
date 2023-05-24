@@ -6,7 +6,7 @@ use sexp::*;
 use std::io::Write;
 use std::mem;
 use std::panic;
-use std::sync::Mutex;
+use std::sync::{Mutex, MutexGuard};
 
 use crate::compiler::*;
 use crate::parser::*;
@@ -15,20 +15,13 @@ use crate::structs::*;
 
 static OPS: Lazy<Mutex<Assembler>> = Lazy::new(|| Mutex::new(Assembler::new().unwrap()));
 
-#[macro_export]
-macro_rules! stat {
-    ($var: ident) => {
-        &mut $var.lock().unwrap()
-    };
-}
-
 fn eval(
-    ops: &mut Assembler,
+    mut ops: MutexGuard<Assembler>,
     labels: &mut HashMap<Label, DynamicLabel>,
     instrs: &Vec<Instr>,
 ) -> i64 {
     let start = ops.offset();
-    instrs_to_asm(&instrs, ops, labels);
+    instrs_to_asm(&instrs, &mut ops, labels);
     dynasm!(ops; .arch x64; ret);
 
     ops.commit().unwrap();
@@ -38,6 +31,8 @@ fn eval(
         let buf = reader.lock();
         unsafe { mem::transmute(buf.ptr(start)) }
     };
+    // Drop before calling the function since it might try to acquire the lock as well.
+    drop(ops);
     jitted_fn()
 }
 
@@ -61,7 +56,8 @@ pub fn repl(eval_input: Option<(&Vec<Expr>, &Expr, &str)>) {
 
     // Eval
     if let Some((eval_fns, eval_in, input_str)) = eval_input {
-        add_interface_calls(stat!(OPS), &mut labels, true);
+        let mut ops = OPS.lock().unwrap();
+        add_interface_calls(&mut ops, &mut labels, true);
         let mut instrs: Vec<Instr> = vec![Instr::Mov(MovArgs::ToReg(
             Reg::R15,
             Arg64::Imm64(heap.as_mut_ptr() as i64),
@@ -86,16 +82,16 @@ pub fn repl(eval_input: Option<(&Vec<Expr>, &Expr, &str)>) {
         labels.extend(com.fns.iter().fold(hashmap! {}, |mut acc, (f, _)| {
             acc.insert(
                 Label::new(Some(&format!("fun_{f}"))),
-                stat!(OPS).new_dynamic_label(),
+                ops.new_dynamic_label(),
             );
             acc
         }));
         instrs_to_asm(
             &compile_func_defns(eval_fns, &mut com),
-            stat!(OPS),
+            &mut ops,
             &mut labels,
         );
-        stat!(OPS).commit().unwrap();
+        ops.commit().unwrap();
 
         // Setup input
         input = parse_input(input_str);
@@ -107,12 +103,12 @@ pub fn repl(eval_input: Option<(&Vec<Expr>, &Expr, &str)>) {
             Some(&mut com),
             input.1,
         ));
-        print_result(eval(stat!(OPS), &mut labels, &mut instrs));
+        print_result(eval(ops, &mut labels, &mut instrs));
         return;
     }
 
     // REPL
-    add_interface_calls(stat!(OPS), &mut labels, false);
+    add_interface_calls(&mut OPS.lock().unwrap(), &mut labels, false);
     let mut line = String::new();
     loop {
         println!("{co:?}");
@@ -181,6 +177,7 @@ pub fn repl(eval_input: Option<(&Vec<Expr>, &Expr, &str)>) {
         });
 
         // Eval with dynasm
+        let mut ops = OPS.lock().unwrap();
         if let Ok(res) = res {
             let instrs = &mut match res {
                 CompileResponse::Define(x, mut instrs, vtype) if x == "input" => {
@@ -240,8 +237,8 @@ pub fn repl(eval_input: Option<(&Vec<Expr>, &Expr, &str)>) {
                         },
                     );
 
-                    instrs_to_asm(&instrs, stat!(OPS), &mut labels);
-                    stat!(OPS).commit().unwrap();
+                    instrs_to_asm(&instrs, &mut ops, &mut labels);
+                    ops.commit().unwrap();
                     // Do not run any code
                     for i in &*instrs {
                         println!("{i:?}");
@@ -265,7 +262,7 @@ pub fn repl(eval_input: Option<(&Vec<Expr>, &Expr, &str)>) {
             for i in &*instrs {
                 println!("{i:?}");
             }
-            print_result(eval(stat!(OPS), &mut labels, instrs));
+            print_result(eval(ops, &mut labels, instrs));
         };
 
         // Increase define stack if needed
