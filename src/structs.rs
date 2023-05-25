@@ -2,7 +2,7 @@ use im::{hashmap, HashMap};
 use std::fmt;
 use std::fmt::Debug;
 
-use dynasmrt::{dynasm, DynamicLabel, DynasmApi, DynasmLabelApi};
+use dynasmrt::{dynasm, DynamicLabel, DynasmApi, DynasmLabelApi, AssemblyOffset};
 
 // Parser
 #[derive(Clone, Debug)]
@@ -664,6 +664,33 @@ impl Instr {
 
 pub enum CompileResponse {
     Define(String, Vec<Instr>, Option<Type>),
-    FnDefn(String, Vec<String>, i32, Vec<Instr>),
+    FnDefn(String, Vec<String>, i32, Expr),
     Expr(Vec<Instr>),
+}
+
+#[derive(Clone, Debug)]
+pub struct FunDefEnv {
+    pub name: String,
+    pub orig: AssemblyOffset,
+    pub defn: Expr,
+    pub depth: i32,
+    pub argc: i32,
+}
+
+impl FunDefEnv {
+    pub fn new(
+        name: String,
+        orig: AssemblyOffset,
+        defn: Expr,
+        depth: i32,
+        argc: i32,
+    ) -> FunDefEnv {
+        FunDefEnv {
+            name,
+            orig,
+            defn,
+            depth,
+            argc,
+        }
+    }
 }

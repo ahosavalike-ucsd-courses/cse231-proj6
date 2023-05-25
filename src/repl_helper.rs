@@ -150,3 +150,120 @@ pub fn print_result(result: i64) -> i64 {
     println!("{}", snek_str(result, &mut HashSet::new()));
     return result;
 }
+
+pub fn asm_repl_func_defn(
+    ops: &mut Assembler,
+    com: &mut ContextMut,
+    lbls: &mut HashMap<Label, DynamicLabel>,
+    f: &FunDefEnv,
+    arg_types: &Vec<Type>,
+) {
+    println!("Args: {arg_types:?}");
+    let stub = ops.new_dynamic_label();
+    lbls.insert(Label::new(Some(&format!("fun_{}", f.name))), stub);
+    let fast = *lbls
+        .get(&Label::new(Some(&format!("fnf_{}", f.name))))
+        .unwrap();
+    let slow = *lbls
+        .get(&Label::new(Some(&format!("fns_{}", f.name))))
+        .unwrap();
+
+    // Compile new Stub
+    dynasm!(ops; .arch x64; => stub);
+    for (i, arg) in arg_types.iter().enumerate() {
+        let i = (i as i32 - f.depth) * 8;
+        match arg {
+            Type::Int => {
+                dynasm!(ops; .arch x64; test [rsp+i], 1; jnz =>slow);
+            }
+            Type::Bool => {
+                dynasm!(ops
+                    ; .arch x64
+                    ; mov rax, 1
+                    ; mov rbx, 0
+                    ; cmp [rsp+i], TRUE_VAL as i8
+                    ; cmove rax, rbx
+                    ; cmp [rsp+i], FALSE_VAL as i8
+                    ; cmove rax, rbx
+                    ; cmp rax, rbx
+                    ; jne =>slow
+                );
+            }
+            Type::List => {
+                dynasm!(ops; .arch x64; mov rax, [rsp+i]; and rax, 3; cmp rax, 1; jne =>slow);
+            }
+        }
+    }
+    dynasm!(ops; .arch x64; jmp =>fast);
+
+    if let Expr::FnDefn(name, vars, body) = &f.defn {
+        // Compile Slow
+        let mut instrs = vec![];
+        let mut co = Context::new(None)
+            .modify_si(vars.len() as i32)
+            // Function body is tail position
+            .modify_tail(true);
+
+        for (i, v) in vars.iter().enumerate() {
+            let existing = co.env.get(v.as_str());
+            if existing.is_some() && !existing.unwrap().defined {
+                panic!("duplicate parameter binding in definition");
+            }
+            co.env
+                .insert(v.to_string(), VarEnv::new(i as i32, None, false));
+        }
+
+        instrs.push(Instr::LabelI(Label::new(Some(&format!("fns_{name}")))));
+        instrs.push(Instr::Sub(MovArgs::ToReg(
+            Reg::Rsp,
+            Arg64::Imm(f.depth * 8),
+        )));
+        instrs.extend(compile_expr(&body, &co, com));
+        instrs.push(Instr::Add(MovArgs::ToReg(
+            Reg::Rsp,
+            Arg64::Imm(f.depth * 8),
+        )));
+        instrs.push(Instr::Ret);
+        instrs_to_asm(&instrs, ops, lbls);
+
+        // Compile Fast
+        let mut instrs = vec![];
+        let mut co = Context::new(None)
+            .modify_si(vars.len() as i32)
+            // Function body is tail position
+            .modify_tail(true);
+
+        for (i, v) in vars.iter().enumerate() {
+            let existing = co.env.get(v.as_str());
+            if existing.is_some() && !existing.unwrap().defined {
+                panic!("duplicate parameter binding in definition");
+            }
+            co.env.insert(
+                v.to_string(),
+                VarEnv::new(i as i32, Some(arg_types[i]), false),
+            );
+        }
+
+        instrs.push(Instr::LabelI(Label::new(Some(&format!("fnf_{name}")))));
+        instrs.push(Instr::Sub(MovArgs::ToReg(
+            Reg::Rsp,
+            Arg64::Imm(f.depth * 8),
+        )));
+        instrs.extend(compile_expr(&body, &co, com));
+        instrs.push(Instr::Add(MovArgs::ToReg(
+            Reg::Rsp,
+            Arg64::Imm(f.depth * 8),
+        )));
+        instrs.push(Instr::Ret);
+        instrs_to_asm(&instrs, ops, lbls);
+    }
+
+    ops.commit().unwrap();
+
+    // Alter original stub to jump into new stub
+    ops.alter(|ops| {
+        ops.goto(f.orig);
+        dynasm!(ops; .arch x64; jmp =>stub);
+    })
+    .unwrap();
+}

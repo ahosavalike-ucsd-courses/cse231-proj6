@@ -1,4 +1,4 @@
-use dynasmrt::{dynasm, x64::Assembler, DynamicLabel, DynasmApi};
+use dynasmrt::{dynasm, x64::Assembler, DynamicLabel, DynasmApi, DynasmLabelApi};
 use im::hashmap;
 use im::HashMap;
 use once_cell::sync::Lazy;
@@ -14,14 +14,49 @@ use crate::repl_helper::*;
 use crate::structs::*;
 
 static OPS: Lazy<Mutex<Assembler>> = Lazy::new(|| Mutex::new(Assembler::new().unwrap()));
+static COM: Lazy<Mutex<ContextMut>> = Lazy::new(|| Mutex::new(ContextMut::new()));
+static FUNCTIONS: Lazy<Mutex<HashMap<u64, FunDefEnv>>> = Lazy::new(|| Mutex::new(hashmap! {}));
+static LABELS: Lazy<Mutex<HashMap<Label, DynamicLabel>>> = Lazy::new(|| Mutex::new(hashmap! {}));
+static FUNCTION_INDEX: Mutex<u64> = Mutex::new(0);
+
+// Compiles the slow and fast versions of the function
+fn function_compile(fi: u64, stack: u64) {
+    let f = FUNCTIONS.lock().unwrap().get(&fi).unwrap().clone();
+    let mut arg_types = Vec::with_capacity(f.argc as usize);
+
+    // Go through stack to get the arg types
+    let stack = stack as *const i64;
+    for i in 0..f.argc {
+        let arg = unsafe { *stack.offset(i as isize) };
+        arg_types.push(if arg == FALSE_VAL || arg == TRUE_VAL {
+            Type::Bool
+        } else if arg & 1 == 0 {
+            Type::Int
+        } else if arg & 3 == 1 {
+            Type::List
+        } else {
+            panic!("Unknown type");
+        });
+    }
+
+    // Assemble the functions
+    asm_repl_func_defn(
+        &mut OPS.lock().unwrap(),
+        &mut COM.lock().unwrap(),
+        &mut LABELS.lock().unwrap(),
+        &f,
+        &arg_types,
+    );
+}
 
 fn eval(
     mut ops: MutexGuard<Assembler>,
-    labels: &mut HashMap<Label, DynamicLabel>,
+    com: MutexGuard<ContextMut>,
+    mut labels: MutexGuard<HashMap<Label, DynamicLabel>>,
     instrs: &Vec<Instr>,
 ) -> i64 {
     let start = ops.offset();
-    instrs_to_asm(&instrs, &mut ops, labels);
+    instrs_to_asm(&instrs, &mut ops, &mut labels);
     dynasm!(ops; .arch x64; ret);
 
     ops.commit().unwrap();
@@ -33,6 +68,8 @@ fn eval(
     };
     // Drop before calling the function since it might try to acquire the lock as well.
     drop(ops);
+    drop(com);
+    drop(labels);
     jitted_fn()
 }
 
@@ -47,16 +84,16 @@ pub fn repl(eval_input: Option<(&Vec<Expr>, &Expr, &str)>) {
     heap[1] = 0;
 
     let mut co = Context::new(Some(define_stack.as_mut_ptr())).modify_si(1);
-    let mut com = ContextMut::new();
-    com.curr_heap_ptr = heap.as_mut_ptr() as i64;
-
-    let mut labels: HashMap<Label, DynamicLabel> = hashmap! {};
+    COM.lock().unwrap().curr_heap_ptr = heap.as_mut_ptr() as i64;
 
     let mut input = (FALSE_VAL, Some(Type::Bool));
 
     // Eval
     if let Some((eval_fns, eval_in, input_str)) = eval_input {
         let mut ops = OPS.lock().unwrap();
+        let mut com = COM.lock().unwrap();
+        let mut labels = LABELS.lock().unwrap();
+
         add_interface_calls(&mut ops, &mut labels, true);
         let mut instrs: Vec<Instr> = vec![Instr::Mov(MovArgs::ToReg(
             Reg::R15,
@@ -103,15 +140,15 @@ pub fn repl(eval_input: Option<(&Vec<Expr>, &Expr, &str)>) {
             Some(&mut com),
             input.1,
         ));
-        print_result(eval(ops, &mut labels, &mut instrs));
+        print_result(eval(ops, com, labels, &mut instrs));
         return;
     }
 
     // REPL
-    add_interface_calls(&mut OPS.lock().unwrap(), &mut labels, false);
+    add_interface_calls(&mut OPS.lock().unwrap(), &mut LABELS.lock().unwrap(), false);
     let mut line = String::new();
     loop {
-        println!("{co:?}");
+        // println!("{co:?}");
         // println!("{com:?}");
         line.clear();
         print!("> ");
@@ -143,6 +180,7 @@ pub fn repl(eval_input: Option<(&Vec<Expr>, &Expr, &str)>) {
             }
         }
 
+        let mut com = COM.lock().unwrap();
         // Parse and Compile, check for panic
         let res = panic::catch_unwind(|| {
             let com_discard = &mut com.clone();
@@ -165,7 +203,7 @@ pub fn repl(eval_input: Option<(&Vec<Expr>, &Expr, &str)>) {
                     f.clone(),
                     args.clone(),
                     depth_aligned(&expr, 0),
-                    compile_func_defns(&vec![expr], com_discard),
+                    expr.clone(),
                 ),
                 _ => CompileResponse::Expr(compile_expr_aligned(
                     &expr,
@@ -178,6 +216,7 @@ pub fn repl(eval_input: Option<(&Vec<Expr>, &Expr, &str)>) {
 
         // Eval with dynasm
         let mut ops = OPS.lock().unwrap();
+        let mut labels = LABELS.lock().unwrap();
         if let Ok(res) = res {
             let instrs = &mut match res {
                 CompileResponse::Define(x, mut instrs, vtype) if x == "input" => {
@@ -228,7 +267,7 @@ pub fn repl(eval_input: Option<(&Vec<Expr>, &Expr, &str)>) {
                     )));
                     instrs
                 }
-                CompileResponse::FnDefn(f, a, depth, instrs) => {
+                CompileResponse::FnDefn(f, a, depth, body) => {
                     com.fns.insert(
                         f.clone(),
                         FunEnv {
@@ -237,12 +276,42 @@ pub fn repl(eval_input: Option<(&Vec<Expr>, &Expr, &str)>) {
                         },
                     );
 
-                    instrs_to_asm(&instrs, &mut ops, &mut labels);
-                    ops.commit().unwrap();
-                    // Do not run any code
-                    for i in &*instrs {
-                        println!("{i:?}");
+                    let fi;
+                    // Get unique index
+                    {
+                        let mut gfi = FUNCTION_INDEX.lock().unwrap();
+                        fi = gfi.clone();
+                        *gfi += 1;
                     }
+
+                    // Generate and store the dynamic labels for all three functions
+                    let stub = ops.new_dynamic_label();
+                    let fast = ops.new_dynamic_label();
+                    let slow = ops.new_dynamic_label();
+                    labels.insert(Label::new(Some(&format!("fun_{f}"))), stub);
+                    labels.insert(Label::new(Some(&format!("fnf_{f}"))), fast);
+                    labels.insert(Label::new(Some(&format!("fns_{f}"))), slow);
+                    FUNCTIONS.lock().unwrap().insert(
+                        fi,
+                        FunDefEnv::new(f, ops.offset(), body, depth, a.len() as i32),
+                    );
+
+                    // Set up call into Rust for dynamic compile
+                    dynasm!(ops
+                        ; .arch x64
+                        ; => stub
+                        ; sub rsp, depth * 8
+                        ; mov rax, QWORD function_compile as _
+                        ; mov rdi, QWORD fi as i64
+                        ; mov rsi, rsp
+                        ; call rax
+                        ; add rsp, depth * 8
+                        // since fast is still not compiled, first time will have to go through the modified stub
+                        ; jmp =>stub
+                        // should not happen!
+                        ; ret
+                    );
+                    ops.commit().unwrap();
                     continue;
                 }
                 CompileResponse::Expr(instrs) => instrs,
@@ -259,10 +328,10 @@ pub fn repl(eval_input: Option<(&Vec<Expr>, &Expr, &str)>) {
                 Instr::Mov(MovArgs::ToReg(Reg::R15, Arg64::Imm64(com.curr_heap_ptr))),
             );
 
-            for i in &*instrs {
-                println!("{i:?}");
-            }
-            print_result(eval(ops, &mut labels, instrs));
+            // for i in &*instrs {
+            //     println!("{i:?}");
+            // }
+            print_result(eval(ops, com, labels, instrs));
         };
 
         // Increase define stack if needed

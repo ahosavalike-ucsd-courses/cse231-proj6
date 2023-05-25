@@ -980,7 +980,9 @@ pub fn instrs_to_asm(
 ) {
     cmds.iter().for_each(|c| {
         if let LabelI(l) = c {
-            lbls.insert(l.clone(), ops.new_dynamic_label());
+            if lbls.get(&l).is_none() {
+                lbls.insert(l.clone(), ops.new_dynamic_label());
+            }
         }
     });
     cmds.iter().for_each(|c| c.asm(ops, lbls))
