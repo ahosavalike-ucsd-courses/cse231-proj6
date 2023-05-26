@@ -664,7 +664,7 @@ impl Instr {
 
 pub enum CompileResponse {
     Define(String, Vec<Instr>, Option<Type>),
-    FnDefn(String, Vec<String>, i32, Expr),
+    FnDefn(String, Expr, i32), // name, defn, argc
     Expr(Vec<Instr>),
 }
 

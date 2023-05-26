@@ -19,8 +19,57 @@ static FUNCTIONS: Lazy<Mutex<HashMap<u64, FunDefEnv>>> = Lazy::new(|| Mutex::new
 static LABELS: Lazy<Mutex<HashMap<Label, DynamicLabel>>> = Lazy::new(|| Mutex::new(hashmap! {}));
 static FUNCTION_INDEX: Mutex<u64> = Mutex::new(0);
 
+// Compiles the initial stub for the function
+fn function_compile_initial(
+    ops: &mut Assembler,
+    com: &mut ContextMut,
+    labels: &mut HashMap<Label, DynamicLabel>,
+    f: String,
+    argc: i32,
+    defn: Expr,
+) {
+    let depth = depth_aligned(&defn, 0);
+    com.fns.insert(f.clone(), FunEnv { argc: argc, depth });
+
+    let fi;
+    // Get unique index
+    {
+        let mut gfi = FUNCTION_INDEX.lock().unwrap();
+        fi = gfi.clone();
+        *gfi += 1;
+    }
+
+    // Generate and store the dynamic labels for all three functions
+    let stub = ops.new_dynamic_label();
+    let fast = ops.new_dynamic_label();
+    let slow = ops.new_dynamic_label();
+    labels.insert(Label::new(Some(&format!("fun_{f}"))), stub);
+    labels.insert(Label::new(Some(&format!("fnf_{f}"))), fast);
+    labels.insert(Label::new(Some(&format!("fns_{f}"))), slow);
+    FUNCTIONS
+        .lock()
+        .unwrap()
+        .insert(fi, FunDefEnv::new(f, ops.offset(), defn, depth, argc));
+
+    // Set up call into Rust for dynamic compile
+    dynasm!(ops
+        ; .arch x64
+        ; => stub
+        ; sub rsp, depth * 8
+        ; mov rax, QWORD function_compile_runtime as _
+        ; mov rdi, QWORD fi as i64
+        ; mov rsi, rsp
+        ; call rax
+        ; add rsp, depth * 8
+        // since fast is still not compiled, first time will have to go through the modified stub
+        ; jmp =>stub
+        // should not happen!
+        ; ret
+    );
+}
+
 // Compiles the slow and fast versions of the function
-fn function_compile(fi: u64, stack: u64) {
+fn function_compile_runtime(fi: u64, stack: u64) {
     let f = FUNCTIONS.lock().unwrap().get(&fi).unwrap().clone();
     let mut arg_types = Vec::with_capacity(f.argc as usize);
 
@@ -123,11 +172,21 @@ pub fn repl(eval_input: Option<(&Vec<Expr>, &Expr, &str)>) {
             );
             acc
         }));
-        instrs_to_asm(
-            &compile_func_defns(eval_fns, &mut com),
-            &mut ops,
-            &mut labels,
-        );
+        for expr in eval_fns {
+            if let Expr::FnDefn(f, args, _) = expr {
+                function_compile_initial(
+                    &mut ops,
+                    &mut com,
+                    &mut labels,
+                    f.clone(),
+                    args.len() as i32,
+                    expr.clone(),
+                );
+            } else {
+                panic!("Not a function");
+            }
+        }
+
         ops.commit().unwrap();
 
         // Setup input
@@ -201,9 +260,8 @@ pub fn repl(eval_input: Option<(&Vec<Expr>, &Expr, &str)>) {
                 ),
                 Expr::FnDefn(f, args, _) => CompileResponse::FnDefn(
                     f.clone(),
-                    args.clone(),
-                    depth_aligned(&expr, 0),
                     expr.clone(),
+                    args.len() as i32,
                 ),
                 _ => CompileResponse::Expr(compile_expr_aligned(
                     &expr,
@@ -267,49 +325,14 @@ pub fn repl(eval_input: Option<(&Vec<Expr>, &Expr, &str)>) {
                     )));
                     instrs
                 }
-                CompileResponse::FnDefn(f, a, depth, body) => {
-                    com.fns.insert(
-                        f.clone(),
-                        FunEnv {
-                            argc: a.len() as i32,
-                            depth,
-                        },
-                    );
-
-                    let fi;
-                    // Get unique index
-                    {
-                        let mut gfi = FUNCTION_INDEX.lock().unwrap();
-                        fi = gfi.clone();
-                        *gfi += 1;
-                    }
-
-                    // Generate and store the dynamic labels for all three functions
-                    let stub = ops.new_dynamic_label();
-                    let fast = ops.new_dynamic_label();
-                    let slow = ops.new_dynamic_label();
-                    labels.insert(Label::new(Some(&format!("fun_{f}"))), stub);
-                    labels.insert(Label::new(Some(&format!("fnf_{f}"))), fast);
-                    labels.insert(Label::new(Some(&format!("fns_{f}"))), slow);
-                    FUNCTIONS.lock().unwrap().insert(
-                        fi,
-                        FunDefEnv::new(f, ops.offset(), body, depth, a.len() as i32),
-                    );
-
-                    // Set up call into Rust for dynamic compile
-                    dynasm!(ops
-                        ; .arch x64
-                        ; => stub
-                        ; sub rsp, depth * 8
-                        ; mov rax, QWORD function_compile as _
-                        ; mov rdi, QWORD fi as i64
-                        ; mov rsi, rsp
-                        ; call rax
-                        ; add rsp, depth * 8
-                        // since fast is still not compiled, first time will have to go through the modified stub
-                        ; jmp =>stub
-                        // should not happen!
-                        ; ret
+                CompileResponse::FnDefn(f, defn, argc) => {
+                    function_compile_initial(
+                        &mut ops,
+                        &mut com,
+                        &mut labels,
+                        f,
+                        argc,
+                        defn,
                     );
                     ops.commit().unwrap();
                     continue;
