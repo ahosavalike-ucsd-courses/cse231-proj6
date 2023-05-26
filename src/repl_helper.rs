@@ -158,7 +158,6 @@ pub fn asm_repl_func_defn(
     f: &FunDefEnv,
     arg_types: &Vec<Type>,
 ) {
-    println!("Args: {arg_types:?}");
     let stub = ops.new_dynamic_label();
     lbls.insert(Label::new(Some(&format!("fun_{}", f.name))), stub);
     let fast = *lbls
@@ -225,10 +224,8 @@ pub fn asm_repl_func_defn(
             Arg64::Imm(f.depth * 8),
         )));
         instrs.push(Instr::Ret);
-        instrs_to_asm(&instrs, ops, lbls);
 
         // Compile Fast
-        let mut instrs = vec![];
         let mut co = Context::new(None)
             .modify_si(vars.len() as i32)
             // Function body is tail position
@@ -257,7 +254,11 @@ pub fn asm_repl_func_defn(
             Arg64::Imm(f.depth * 8),
         )));
         instrs.push(Instr::Ret);
+        
+        // Assemble both the fast and slow versions
         instrs_to_asm(&instrs, ops, lbls);
+    } else {
+        panic!("Compiling wrong thing here: {:?}", f.defn);
     }
 
     ops.commit().unwrap();
