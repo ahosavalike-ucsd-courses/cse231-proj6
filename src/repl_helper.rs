@@ -218,6 +218,7 @@ pub fn asm_repl_func_defn(
             Reg::Rsp,
             Arg64::Imm(f.depth * 8),
         )));
+        com.depth = f.depth;
         instrs.extend(compile_expr(&body, &co, com));
         instrs.push(Instr::Add(MovArgs::ToReg(
             Reg::Rsp,
@@ -249,6 +250,7 @@ pub fn asm_repl_func_defn(
             Reg::Rsp,
             Arg64::Imm(f.depth * 8),
         )));
+        com.depth = f.depth;
         instrs.extend(compile_expr(&body, &co, com));
         instrs.push(Instr::Add(MovArgs::ToReg(
             Reg::Rsp,
