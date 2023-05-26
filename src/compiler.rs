@@ -268,10 +268,11 @@ pub fn compile_expr(e: &Expr, co: &Context, com: &mut ContextMut) -> Vec<Instr> 
                     com.result_type = Some(Int);
                 }
                 Op1::IsBool => {
-                    instrs.push(And(ToReg(Rax, Imm(1))));
-                    instrs.push(Mov(ToReg(Rax, TRUE))); // Set true
-                    instrs.push(Mov(ToReg(Rbx, FALSE)));
-                    instrs.push(CMovI(CMov::Z(Rax, OReg(Rbx)))); // Set false if zero
+                    instrs.push(And(ToReg(Rax, Imm(3))));
+                    instrs.push(Cmp(ToReg(Rax, Imm(3))));
+                    instrs.push(Mov(ToReg(Rax, FALSE))); // Set false
+                    instrs.push(Mov(ToReg(Rbx, TRUE)));
+                    instrs.push(CMovI(CMov::E(Rax, OReg(Rbx)))); // Set true if equal
 
                     com.result_type = Some(Bool);
                 }

@@ -117,6 +117,11 @@ success_tests! {
 		expected: "7",
 	},
 	{
+		name: isbool_funclist_2,
+		file: "isbool_funclist.snek",
+		expected: "false",
+	},
+	{
 		name: set_expr2_5,
 		file: "set_expr2.snek",
 		expected: "25",

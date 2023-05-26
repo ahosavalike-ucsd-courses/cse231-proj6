@@ -178,13 +178,9 @@ pub fn asm_repl_func_defn(
             Type::Bool => {
                 dynasm!(ops
                     ; .arch x64
-                    ; mov rax, 1
-                    ; mov rbx, 0
-                    ; cmp [rsp+i], TRUE_VAL as i8
-                    ; cmove rax, rbx
-                    ; cmp [rsp+i], FALSE_VAL as i8
-                    ; cmove rax, rbx
-                    ; cmp rax, rbx
+                    ; mov rax, [rsp+i]
+                    ; and rax, 3
+                    ; cmp rax, 3
                     ; jne =>slow
                 );
             }
