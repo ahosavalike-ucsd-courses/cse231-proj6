@@ -161,7 +161,7 @@ pub fn compile_expr_aligned(
         Mov(ToMem(
             MemRef {
                 reg: R15,
-                offset: 1,
+                offset: 2,
             },
             OReg(Rsp),
         )),
@@ -965,6 +965,8 @@ pub fn compile_expr(e: &Expr, co: &Context, com: &mut ContextMut) -> Vec<Instr> 
                     offset: 0,
                 }),
             )));
+            // Check if space exists to allocate
+
             // Length as the first value
             instrs.push(Mov(ToMem(
                 MemRef {

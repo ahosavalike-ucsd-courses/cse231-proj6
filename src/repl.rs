@@ -125,12 +125,17 @@ fn eval(
 pub fn repl(eval_input: Option<(&Vec<Expr>, &Expr, &str)>) {
     // Initial define stack size low to see reallocations
     let mut define_stack: Vec<u64> = vec![0; 1];
-    let mut heap: Vec<u64> = vec![0; 16384];
 
+    let heap_size = 16384;
+    let heap_meta = 3;
+    let heap_len = heap_meta + heap_size;
+    let mut heap = vec![0; heap_len];
     // Placeholder for offset
-    heap[0] = unsafe { heap.as_mut_ptr().offset(2) } as u64;
+    heap[0] = unsafe { heap.as_mut_ptr().add(heap_meta) } as u64;
+    // Placeholder for end of heap
+    heap[1] = unsafe { heap.as_mut_ptr().add(heap_len - 1) } as u64;
     // Placeholder for Rsp base
-    heap[1] = 0;
+    heap[2] = 0;
 
     let mut co = Context::new(Some(define_stack.as_mut_ptr())).modify_si(1);
     COM.lock().unwrap().curr_heap_ptr = heap.as_mut_ptr() as i64;
