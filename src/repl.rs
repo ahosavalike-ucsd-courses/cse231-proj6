@@ -18,6 +18,7 @@ static COM: Lazy<Mutex<ContextMut>> = Lazy::new(|| Mutex::new(ContextMut::new())
 static FUNCTIONS: Lazy<Mutex<HashMap<u64, FunDefEnv>>> = Lazy::new(|| Mutex::new(hashmap! {}));
 static LABELS: Lazy<Mutex<HashMap<Label, DynamicLabel>>> = Lazy::new(|| Mutex::new(hashmap! {}));
 static FUNCTION_INDEX: Mutex<u64> = Mutex::new(0);
+pub static mut HEAP_START: *const u64 = std::ptr::null();
 
 // Compiles the initial stub for the function
 fn function_compile_initial(
@@ -136,6 +137,8 @@ pub fn repl(eval_input: Option<(&Vec<Expr>, &Expr, &str)>) {
     heap[1] = unsafe { heap.as_mut_ptr().add(heap_len - 1) } as u64;
     // Placeholder for Rsp base
     heap[2] = 0;
+
+    unsafe { HEAP_START = heap.as_ptr() };
 
     let mut co = Context::new(Some(define_stack.as_mut_ptr())).modify_si(1);
     COM.lock().unwrap().curr_heap_ptr = heap.as_mut_ptr() as i64;
@@ -263,11 +266,9 @@ pub fn repl(eval_input: Option<(&Vec<Expr>, &Expr, &str)>) {
                     compile_expr_aligned(&e, Some(&co), Some(com_discard), input.1),
                     com_discard.result_type,
                 ),
-                Expr::FnDefn(f, args, _) => CompileResponse::FnDefn(
-                    f.clone(),
-                    expr.clone(),
-                    args.len() as i32,
-                ),
+                Expr::FnDefn(f, args, _) => {
+                    CompileResponse::FnDefn(f.clone(), expr.clone(), args.len() as i32)
+                }
                 _ => CompileResponse::Expr(compile_expr_aligned(
                     &expr,
                     Some(&co),
@@ -331,14 +332,7 @@ pub fn repl(eval_input: Option<(&Vec<Expr>, &Expr, &str)>) {
                     instrs
                 }
                 CompileResponse::FnDefn(f, defn, argc) => {
-                    function_compile_initial(
-                        &mut ops,
-                        &mut com,
-                        &mut labels,
-                        f,
-                        argc,
-                        defn,
-                    );
+                    function_compile_initial(&mut ops, &mut com, &mut labels, f, argc, defn);
                     ops.commit().unwrap();
                     continue;
                 }

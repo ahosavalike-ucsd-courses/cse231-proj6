@@ -425,14 +425,16 @@ pub fn compile_expr(e: &Expr, co: &Context, com: &mut ContextMut) -> Vec<Instr> 
                             Rbx,
                             Mem(MemRef {
                                 reg: Rax,
-                                offset: 0,
+                                offset: 1,  // Length is at offset 1
                             }),
                         )),
                         JumpI(Jump::G(snek_error.clone())),
                         // Test lower bound
                         Cmp(ToReg(Rbx, Imm(0))),
                         JumpI(Jump::LE(snek_error.clone())),
-                        // Add index, multiply 8 = shift 3
+                        // Ignore the length word
+                        Add(ToReg(Rbx, Imm(1))),
+                        // Add offset to Rax, multiply 8 = shift 3
                         Sal(Rbx, 3),
                         Add(ToReg(Rax, OReg(Rbx))),
                         Mov(ToReg(
@@ -746,14 +748,16 @@ pub fn compile_expr(e: &Expr, co: &Context, com: &mut ContextMut) -> Vec<Instr> 
                     Rax,
                     Mem(MemRef {
                         reg: Rbx,
-                        offset: 0,
+                        offset: 1,  // Length are offset 1
                     }),
                 )),
                 JumpI(Jump::G(snek_error.clone())),
                 // Test lower bound
                 Cmp(ToReg(Rax, Imm(0))),
                 JumpI(Jump::LE(snek_error.clone())),
-                // Add offset to base address, index multiply 8 = shift 3
+                // Ignore the length word
+                Add(ToReg(Rax, Imm(1))),
+                // Add offset to Rbx, multiply 8 = shift 3
                 Sal(Rax, 3),
                 Add(ToReg(Rbx, OReg(Rax))),
                 // Save this
@@ -957,24 +961,47 @@ pub fn compile_expr(e: &Expr, co: &Context, com: &mut ContextMut) -> Vec<Instr> 
                 ));
             }
 
-            // Get heap head
-            instrs.push(Mov(ToReg(
-                Rbx,
-                Mem(MemRef {
-                    reg: R15,
-                    offset: 0,
-                }),
-            )));
-            // Check if space exists to allocate
+            let alloc_succ = com.label("alloc_succ");
+            com.index_used();
 
-            // Length as the first value
-            instrs.push(Mov(ToMem(
-                MemRef {
-                    reg: Rbx,
-                    offset: 0,
-                },
-                Imm64(es.len() as i64),
-            )));
+            instrs.extend(vec![
+                // Get heap head
+                Mov(ToReg(
+                    Rbx,
+                    Mem(MemRef {
+                        reg: R15,
+                        offset: 0,
+                    }),
+                )),
+                // Check if space exists to allocate
+                Mov(ToReg(Rax, OReg(Rbx))),
+                Add(ToReg(Rax, Imm((es.len() + 2) as i32 * 8))),    // 2 word metadata
+                Cmp(ToReg(
+                    Rax,
+                    Mem(MemRef {
+                        reg: R15,
+                        offset: 1,
+                    }),
+                )),
+                JumpI(Jump::LE(alloc_succ.clone())),
+                // Insufficient mem, Call GC
+                Mov(ToReg(Rdi, Imm(es.len() as i32 + 2))),
+                Mov(ToReg(Rsi, OReg(Rbp))),
+                Mov(ToReg(Rdx, OReg(Rsp))),
+                Call(Label::new(Some("snek_try_gc"))),
+
+                // Continue if success
+                LabelI(alloc_succ),
+                // Length as the second value
+                Mov(ToMem(
+                    MemRef {
+                        reg: Rbx,
+                        offset: 1,
+                    },
+                    Imm64(es.len() as i64),
+                )),
+            ]);
+
             for i in 0..es.len() as i32 {
                 instrs.push(Mov(ToReg(
                     Rax,
@@ -986,7 +1013,7 @@ pub fn compile_expr(e: &Expr, co: &Context, com: &mut ContextMut) -> Vec<Instr> 
                 instrs.push(Mov(ToMem(
                     MemRef {
                         reg: Rbx,
-                        offset: i + 1, // 1st word is length
+                        offset: i + 2, // 1st two words are metadata
                     },
                     OReg(Rax),
                 )));

@@ -1,6 +1,8 @@
 use std::collections::HashSet;
 use std::env;
 
+static mut HEAP_START: *const u64 = std::ptr::null();
+
 const TRUE_VAL: i64 = 7;
 const FALSE_VAL: i64 = 3;
 const NIL_VAL: i64 = 1;
@@ -27,15 +29,15 @@ fn deep_equal_recurse(l: i64, r: i64, seen: &mut HashSet<(i64, i64)>) -> bool {
 
     let la = (l - 1) as *const i64;
     let ra = (r - 1) as *const i64;
-    let lc = unsafe { *la } as isize;
-    let rc = unsafe { *ra } as isize;
+    let lc = unsafe { *la.add(1) } as isize;
+    let rc = unsafe { *ra.add(1) } as isize;
     // Check length
     if lc != rc {
         return false;
     }
-    for i in 1..=lc {
-        let ln = unsafe { *la.offset(i) };
-        let rn = unsafe { *ra.offset(i) };
+    for i in 0..lc {
+        let ln = unsafe { *la.offset(i + 2) };
+        let rn = unsafe { *ra.offset(i + 2) };
         if !deep_equal_recurse(ln, rn, seen) {
             return false;
         }
@@ -92,10 +94,10 @@ fn snek_str(val: i64, seen: &mut HashSet<i64>) -> String {
         }
         seen.insert(val);
         let addr = (val - 1) as *const i64;
-        let count = unsafe { *addr } as usize;
+        let count = unsafe { *addr.add(1) } as usize;
         let mut v: Vec<i64> = vec![0; count];
-        for i in 1..=count {
-            v[i - 1] = unsafe { *addr.offset(i as isize) };
+        for i in 0..count {
+            v[i] = unsafe { *addr.add(i + 2) };
         }
         let result = format!(
             "(list {})",
@@ -118,6 +120,22 @@ fn print_result(result: i64) -> i64 {
     return result;
 }
 
+#[export_name = "\x01snek_try_gc"]
+pub unsafe fn snek_try_gc(count: isize, curr_rbp: *const u64, curr_rsp: *const u64) -> *const u64 {
+    let heap_end = *HEAP_START.add(1) as *const u64;
+    let new_heap_ptr = snek_gc(curr_rbp, curr_rsp);
+    if heap_end.offset_from(new_heap_ptr) < count {
+        eprintln!("out of memory");
+        std::process::exit(5)
+    }
+    new_heap_ptr
+}
+
+#[export_name = "\x01snek_gc"]
+pub unsafe fn snek_gc(curr_rbp: *const u64, curr_rsp: *const u64) -> *const u64 {
+    todo!();
+}
+
 fn main() {
     let args: Vec<String> = env::args().collect();
     let input = if args.len() == 2 { &args[1] } else { "false" };
@@ -129,11 +147,13 @@ fn main() {
     // Placeholder for offset
     heap[0] = unsafe { heap.as_mut_ptr().add(heap_meta) } as u64;
     // Placeholder for end of heap
-    heap[1] = unsafe { heap.as_mut_ptr().add(heap_len - 1) } as u64;
+    heap[1] = unsafe { heap.as_mut_ptr().add(heap_len) } as u64;
     // Placeholder for Rsp base
     heap[2] = 0;
 
-    let i: i64 = unsafe { our_code_starts_here(input, heap.as_mut_ptr()) };
+    unsafe { HEAP_START = heap.as_ptr() };
+
+    let i: i64 = unsafe { our_code_starts_here(input, HEAP_START as *mut u64) };
 
     print_result(i);
 }

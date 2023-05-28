@@ -367,6 +367,7 @@ impl CMov {
 pub enum Reg {
     Rax,
     Rcx,
+    Rdx,
     Rbx,
     Rsp,
     Rbp,
@@ -382,6 +383,7 @@ impl fmt::Display for Reg {
         match self {
             Rax => write!(f, "rax"),
             Rcx => write!(f, "rcx"),
+            Rdx => write!(f, "rdx"),
             Rbx => write!(f, "rbx"),
             Rsp => write!(f, "rsp"),
             Rbp => write!(f, "rbp"),
@@ -399,6 +401,7 @@ impl Reg {
         match self {
             Rax => 0,
             Rcx => 1,
+            Rdx => 2,
             Rbx => 3,
             Rsp => 4,
             Rbp => 5,

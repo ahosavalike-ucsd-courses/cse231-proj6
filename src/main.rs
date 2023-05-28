@@ -46,6 +46,7 @@ fn main() -> std::io::Result<()> {
 extern snek_error
 extern snek_print
 extern snek_deep_equal
+extern snek_try_gc
 global our_code_starts_here
 snek_error_stub:
  mov rsp, [r15 + 16] ; 3nd word in heap

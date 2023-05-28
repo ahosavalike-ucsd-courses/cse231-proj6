@@ -3,6 +3,7 @@ use im::HashMap;
 
 use crate::compiler::*;
 use crate::structs::*;
+use crate::repl::HEAP_START;
 use im::HashSet;
 
 pub fn snek_error_exit(errcode: i64) {
@@ -34,6 +35,20 @@ pub fn snek_error_print(errcode: i64) {
     );
 }
 
+unsafe fn snek_try_gc(count: isize, curr_rbp: *const u64, curr_rsp: *const u64) -> *const u64 {
+    let heap_end = *HEAP_START.add(1) as *const u64;
+    let new_heap_ptr = snek_gc(curr_rbp, curr_rsp);
+    if heap_end.offset_from(new_heap_ptr) < count {
+        eprintln!("out of memory");
+        std::process::exit(5)
+    }
+    new_heap_ptr
+}
+
+unsafe fn snek_gc(curr_rbp: *const u64, curr_rsp: *const u64) -> *const u64 {
+    todo!();
+}
+
 pub fn add_interface_calls(
     ops: &mut Assembler,
     lbls: &mut HashMap<Label, DynamicLabel>,
@@ -61,6 +76,10 @@ pub fn add_interface_calls(
     let snek_deep_equal_lbl = ops.new_dynamic_label();
     lbls.insert(Label::new(Some("snek_deep_equal")), snek_deep_equal_lbl);
     dynasm!(ops; .arch x64; =>snek_deep_equal_lbl; mov rax, QWORD deep_equal as _; call rax; ret);
+
+    let snek_try_gc_lbl = ops.new_dynamic_label();
+    lbls.insert(Label::new(Some("snek_try_gc")), snek_deep_equal_lbl);
+    dynasm!(ops; .arch x64; =>snek_try_gc_lbl; mov rax, QWORD snek_try_gc as _; call rax; ret);
 }
 
 pub fn parse_input(input: &str) -> (i64, Option<Type>) {
@@ -88,15 +107,15 @@ pub fn deep_equal_recurse(l: i64, r: i64, seen: &mut HashSet<(i64, i64)>) -> boo
 
     let la = (l - 1) as *const i64;
     let ra = (r - 1) as *const i64;
-    let lc = unsafe { *la } as isize;
-    let rc = unsafe { *ra } as isize;
+    let lc = unsafe { *la.add(1) } as isize;
+    let rc = unsafe { *ra.add(1) } as isize;
     // Check length
     if lc != rc {
         return false;
     }
-    for i in 1..=lc {
-        let ln = unsafe { *la.offset(i) };
-        let rn = unsafe { *ra.offset(i) };
+    for i in 0..lc {
+        let ln = unsafe { *la.offset(i + 2) };
+        let rn = unsafe { *ra.offset(i + 2) };
         if !deep_equal_recurse(ln, rn, seen) {
             return false;
         }
@@ -104,7 +123,7 @@ pub fn deep_equal_recurse(l: i64, r: i64, seen: &mut HashSet<(i64, i64)>) -> boo
     return true;
 }
 
-pub fn deep_equal(l: i64, r: i64) -> i64 {
+fn deep_equal(l: i64, r: i64) -> i64 {
     if deep_equal_recurse(l, r, &mut HashSet::new()) {
         TRUE_VAL
     } else {
@@ -112,7 +131,7 @@ pub fn deep_equal(l: i64, r: i64) -> i64 {
     }
 }
 
-pub fn snek_str(val: i64, seen: &mut HashSet<i64>) -> String {
+fn snek_str(val: i64, seen: &mut HashSet<i64>) -> String {
     if val == TRUE_VAL {
         "true".to_string()
     } else if val == FALSE_VAL {
@@ -121,16 +140,16 @@ pub fn snek_str(val: i64, seen: &mut HashSet<i64>) -> String {
         format!("{}", val >> 1)
     } else if val == NIL_VAL {
         "nil".to_string()
-    } else if val & 3 == 1 {
+    } else if val & 1 == 1 {
         if seen.contains(&val) {
             return "(list <cyclic>)".to_string();
         }
         seen.insert(val);
         let addr = (val - 1) as *const i64;
-        let count = unsafe { *addr } as usize;
+        let count = unsafe { *addr.add(1) } as usize;
         let mut v: Vec<i64> = vec![0; count];
-        for i in 1..=count {
-            v[i - 1] = unsafe { *addr.offset(i as isize) };
+        for i in 0..count {
+            v[i] = unsafe { *addr.add(i + 2) };
         }
         let result = format!(
             "(list {})",
