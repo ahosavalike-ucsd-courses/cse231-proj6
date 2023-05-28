@@ -30,14 +30,14 @@ fn depth(e: &Expr) -> i32 {
         Expr::Let(bindings, e) => bindings
             .iter()
             .enumerate()
-            .map(|(i, (_, e))| (i as i32 + depth(e)))
+            .map(|(i, (_, e))| i as i32 + depth(e))
             .max()
             .unwrap_or(0)
             .max(bindings.len() as i32 + depth(e)),
         Expr::List(es) => es
             .iter()
             .enumerate()
-            .map(|(i, e)| (i as i32 + depth(e)))
+            .map(|(i, e)| i as i32 + depth(e))
             .max()
             .unwrap_or(0)
             .max(es.len() as i32),
@@ -48,8 +48,14 @@ fn depth(e: &Expr) -> i32 {
         Expr::Set(_, e) => depth(e),
         Expr::SetLst(lst, idx, val) => depth(lst).max(1 + depth(idx)).max(2 + depth(val)),
         Expr::Define(_, e) => depth(e),
-        Expr::FnDefn(_, v, b) => depth_aligned(b, v.len() as i32),
-        Expr::FnCall(_, args) => args.len() as i32,
+        Expr::FnDefn(_, v, b) => depth_aligned(b, v.len() as i32 + 1), // 1 for saving Rbp
+        Expr::FnCall(_, args) => args
+            .iter()
+            .enumerate()
+            .map(|(i, e)| i as i32 + depth(e))
+            .max()
+            .unwrap_or(0)
+            .max(args.len() as i32),
     }
 }
 
@@ -68,13 +74,13 @@ pub fn compile_func_defns(fns: &Vec<Expr>, com: &mut ContextMut) -> Vec<Instr> {
 
     // Preprocess all function definitions
     com.fns.extend(fns.iter().fold(hashmap! {}, |mut acc, f| {
-        if let Expr::FnDefn(n, v, b) = f {
+        if let Expr::FnDefn(n, v, _) = f {
             if acc.get(n).is_some() {
                 panic!("function redefined")
             }
             acc.insert(
                 n.to_string(),
-                FunEnv::new(v.len() as i32, depth_aligned(b, v.len() as i32)),
+                FunEnv::new(v.len() as i32, depth_aligned(f, 0)),
             );
             return acc;
         }
@@ -102,10 +108,29 @@ pub fn compile_func_defns(fns: &Vec<Expr>, com: &mut ContextMut) -> Vec<Instr> {
             }
 
             instrs.push(LabelI(Label::new(Some(&format!("fun_{name}")))));
-            instrs.push(Sub(ToReg(Rsp, Imm(com.depth * 8))));
+            instrs.extend(vec![
+                Mov(ToMem(
+                    MemRef {
+                        reg: Rsp,
+                        offset: -1,
+                    },
+                    OReg(Rbp),
+                )),
+                Mov(ToReg(Rbp, OReg(Rsp))),
+                Sub(ToReg(Rsp, Imm(com.depth * 8))),
+            ]);
             instrs.extend(compile_expr(body, &co, com));
-            instrs.push(Add(ToReg(Rsp, Imm(com.depth * 8))));
-            instrs.push(Ret);
+            instrs.extend(vec![
+                Add(ToReg(Rsp, Imm(com.depth * 8))),
+                Mov(ToReg(
+                    Rbp,
+                    Mem(MemRef {
+                        reg: Rsp,
+                        offset: -1,
+                    }),
+                )),
+                Ret,
+            ]);
         }
     }
     return instrs;
@@ -129,11 +154,25 @@ pub fn compile_expr_aligned(
     }
     let com = com_;
 
-    com.depth = depth_aligned(e, if let Some(_) = input { 3 } else { 2 }); // 1 extra for input
+    com.depth = depth_aligned(e, 2); // 1 for rbp, 1 extra for input
 
     let mut instrs: Vec<Instr> = vec![
         // Heap's second word saves the initial RSP, used to restore on runtime error
-        Mov(ToMem(MemRef { reg: R15, offset: 1 }, OReg(Rsp))),
+        Mov(ToMem(
+            MemRef {
+                reg: R15,
+                offset: 1,
+            },
+            OReg(Rsp),
+        )),
+        Mov(ToMem(
+            MemRef {
+                reg: Rsp,
+                offset: -1,
+            },
+            OReg(Rbp),
+        )),
+        Mov(ToReg(Rbp, OReg(Rsp))),
         Sub(ToReg(Rsp, Imm(com.depth * 8))),
         Mov(ToMem(
             MemRef {
@@ -151,7 +190,16 @@ pub fn compile_expr_aligned(
         ),
         com,
     ));
-    instrs.push(Add(ToReg(Rsp, Imm(com.depth * 8))));
+    instrs.extend(vec![
+        Add(ToReg(Rsp, Imm(com.depth * 8))),
+        Mov(ToReg(
+            Rbp,
+            Mem(MemRef {
+                reg: Rsp,
+                offset: -1,
+            }),
+        )),
+    ]);
     return instrs;
 }
 

@@ -340,7 +340,7 @@ pub fn repl(eval_input: Option<(&Vec<Expr>, &Expr, &str)>) {
                 CompileResponse::Expr(instrs) => instrs,
             };
 
-            // Set input to false for now
+            // Set input from define for now
             instrs.insert(
                 0,
                 Instr::Mov(MovArgs::ToReg(Reg::Rdi, Arg64::Imm64(input.0))),

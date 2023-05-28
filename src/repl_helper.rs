@@ -208,18 +208,31 @@ pub fn asm_repl_func_defn(
                 .insert(v.to_string(), VarEnv::new(i as i32, None, false));
         }
 
-        instrs.push(Instr::LabelI(Label::new(Some(&format!("fns_{name}")))));
-        instrs.push(Instr::Sub(MovArgs::ToReg(
-            Reg::Rsp,
-            Arg64::Imm(f.depth * 8),
-        )));
         com.depth = f.depth;
+        instrs.extend(vec![
+            Instr::LabelI(Label::new(Some(&format!("fns_{name}")))),
+            Instr::Mov(MovArgs::ToMem(
+                MemRef {
+                    reg: Reg::Rsp,
+                    offset: -1,
+                },
+                Arg64::OReg(Reg::Rbp),
+            )),
+            Instr::Mov(MovArgs::ToReg(Reg::Rbp, Arg64::OReg(Reg::Rsp))),
+            Instr::Sub(MovArgs::ToReg(Reg::Rsp, Arg64::Imm(com.depth * 8))),
+        ]);
         instrs.extend(compile_expr(&body, &co, com));
-        instrs.push(Instr::Add(MovArgs::ToReg(
-            Reg::Rsp,
-            Arg64::Imm(f.depth * 8),
-        )));
-        instrs.push(Instr::Ret);
+        instrs.extend(vec![
+            Instr::Add(MovArgs::ToReg(Reg::Rsp, Arg64::Imm(com.depth * 8))),
+            Instr::Mov(MovArgs::ToReg(
+                Reg::Rbp,
+                Arg64::Mem(MemRef {
+                    reg: Reg::Rsp,
+                    offset: -1,
+                }),
+            )),
+            Instr::Ret,
+        ]);
 
         // Compile Fast
         let mut co = Context::new(None)
@@ -238,18 +251,32 @@ pub fn asm_repl_func_defn(
             );
         }
 
-        instrs.push(Instr::LabelI(Label::new(Some(&format!("fnf_{name}")))));
-        instrs.push(Instr::Sub(MovArgs::ToReg(
-            Reg::Rsp,
-            Arg64::Imm(f.depth * 8),
-        )));
         com.depth = f.depth;
+        instrs.extend(vec![
+            Instr::LabelI(Label::new(Some(&format!("fnf_{name}")))),
+            Instr::Mov(MovArgs::ToMem(
+                MemRef {
+                    reg: Reg::Rsp,
+                    offset: -1,
+                },
+                Arg64::OReg(Reg::Rbp),
+            )),
+            Instr::Mov(MovArgs::ToReg(Reg::Rbp, Arg64::OReg(Reg::Rsp))),
+            Instr::Sub(MovArgs::ToReg(Reg::Rsp, Arg64::Imm(com.depth * 8))),
+        ]);
         instrs.extend(compile_expr(&body, &co, com));
-        instrs.push(Instr::Add(MovArgs::ToReg(
-            Reg::Rsp,
-            Arg64::Imm(f.depth * 8),
-        )));
-        instrs.push(Instr::Ret);
+        instrs.extend(vec![
+            Instr::Add(MovArgs::ToReg(Reg::Rsp, Arg64::Imm(com.depth * 8))),
+            Instr::Mov(MovArgs::ToReg(
+                Reg::Rbp,
+                Arg64::Mem(MemRef {
+                    reg: Reg::Rsp,
+                    offset: -1,
+                }),
+            )),
+            Instr::Ret,
+        ]);
+
         
         // Assemble both the fast and slow versions
         instrs_to_asm(&instrs, ops, lbls);
