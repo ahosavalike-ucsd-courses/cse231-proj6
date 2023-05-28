@@ -14,6 +14,7 @@ prop_key_lookup = {
     "static": "expected",
     "output": "expected",
     "input": "input",
+    "heap_size": "heap_size",
 }
 prop_type_lookup = {
     "dynamic": "runtime_error_tests!",
@@ -43,10 +44,13 @@ def read_test(fn):
             for entry in data:
                 prop = entry[0]
                 val = entry[1:]
+                if prop_key_lookup.get(str(prop)) is None:
+                    break
                 out[prop_key_lookup[str(prop)]] = "\\n".join(map(str, val))
                 if typ is None:
                     typ = prop_type_lookup.get(str(prop))
-            yield typ, out
+            else:
+                yield typ, out
 
 def gentest(tests, dest):
     final_tests = defaultdict(list)
@@ -61,10 +65,11 @@ def gentest(tests, dest):
             f.write(f"{typ} {{\n")
             for test in tests:
                 f.write("\t{\n")
-                f.write(f'\t\tname: {test["name"]},\n\t\tfile: "{test["file"]}",\n')
-                if test.get("input") is not None:
-                    f.write(f'\t\tinput: "{test["input"]}",\n')
-                f.write(f'\t\texpected: "{test["expected"]}",\n')
+                for k, v in test.items():
+                    if k in ["name", "heap_size"]:
+                        f.write(f'\t\t{k}: {v},\n')
+                    elif v is not None:
+                        f.write(f'\t\t{k}: "{v}",\n')
                 f.write("\t},\n")
             f.write("}\n\n")
 

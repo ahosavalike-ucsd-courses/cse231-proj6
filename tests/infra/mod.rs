@@ -71,6 +71,7 @@ macro_rules! compile_tests {
                 name: $name:ident,
                 file: $file:literal,
                 $(input: $input:literal,)?
+                $(heap_size: $heap_size:literal,)?
                 expected: $expected:literal $(,)?
                 $(" $(tt:$tt)* ")?
             }
@@ -83,8 +84,11 @@ macro_rules! compile_tests {
                 #[allow(unused_assignments, unused_mut)]
                 let mut input = None;
                 $(input = Some($input);)?
+                #[allow(unused_assignments, unused_mut)]
+                let mut heap_size = None;
+                $(heap_size = Some($heap_size);)?
                 let kind = $crate::infra::TestKind::$kind;
-                $crate::infra::run_test_compile(stringify!($name), $file, input, $expected, kind);
+                $crate::infra::run_test_compile(stringify!($name), $file, input, heap_size, $expected, kind);
             }
         )*
     };
@@ -98,6 +102,7 @@ macro_rules! eval_tests {
                 name: $name:ident,
                 file: $file:literal,
                 $(input: $input:literal,)?
+                $(heap_size: $heap_size:literal,)?
                 expected: $expected:literal $(,)?
                 $(" $(tt:$tt)* ")?
             }
@@ -110,17 +115,22 @@ macro_rules! eval_tests {
                 #[allow(unused_assignments, unused_mut)]
                 let mut input = None;
                 $(input = Some($input);)?
+                #[allow(unused_assignments, unused_mut)]
+                let mut heap_size = None;
+                $(heap_size = Some($heap_size);)?
                 let kind = $crate::infra::TestKind::$kind;
-                $crate::infra::run_test_eval($file, input, $expected, kind);
+                $crate::infra::run_test_eval($file, input, heap_size, $expected, kind);
             }
         )*
     };
 }
 
+#[allow(dead_code)]
 pub(crate) fn run_test_compile(
     name: &str,
     file: &str,
     input: Option<&str>,
+    heap_size: Option<usize>,
     expected: &str,
     kind: TestKind,
 ) {
@@ -128,25 +138,38 @@ pub(crate) fn run_test_compile(
 
     // Compile Test
     match kind {
-        TestKind::Success => run_success_test(name, &file, expected, input),
-        TestKind::RuntimeError => run_runtime_error_test(name, &file, expected, input),
+        TestKind::Success => run_success_test(name, &file, expected, input, heap_size),
+        TestKind::RuntimeError => run_runtime_error_test(name, &file, expected, input, heap_size),
         TestKind::StaticError => run_static_error_test(name, &file, expected),
     }
 }
 
-pub(crate) fn run_test_eval(file: &str, input: Option<&str>, expected: &str, kind: TestKind) {
+#[allow(dead_code)]
+pub(crate) fn run_test_eval(
+    file: &str,
+    input: Option<&str>,
+    heap_size: Option<usize>,
+    expected: &str,
+    kind: TestKind,
+) {
     let file = Path::new("tests").join(file);
 
     // Eval Test
     match kind {
-        TestKind::Success => run_success_test_eval(&file, expected, input),
-        TestKind::RuntimeError => run_runtime_error_test_eval(&file, expected, input),
+        TestKind::Success => run_success_test_eval(&file, expected, input, heap_size),
+        TestKind::RuntimeError => run_runtime_error_test_eval(&file, expected, input, heap_size),
         TestKind::StaticError => run_static_error_test_eval(&file, expected, input),
     }
 }
 
-fn run_success_test_eval(file: &Path, expected: &str, input: Option<&str>) {
-    match eval(file, input) {
+#[allow(dead_code)]
+fn run_success_test_eval(
+    file: &Path,
+    expected: &str,
+    input: Option<&str>,
+    heap_size: Option<usize>,
+) {
+    match eval(file, input, heap_size) {
         Err(err) => {
             panic!("eval: expected a successful execution, but got an error: `{err}`");
         }
@@ -157,11 +180,18 @@ fn run_success_test_eval(file: &Path, expected: &str, input: Option<&str>) {
     }
 }
 
-fn run_success_test(name: &str, file: &Path, expected: &str, input: Option<&str>) {
+#[allow(dead_code)]
+fn run_success_test(
+    name: &str,
+    file: &Path,
+    expected: &str,
+    input: Option<&str>,
+    heap_size: Option<usize>,
+) {
     if let Err(err) = compile(name, file) {
         panic!("expected a successful compilation, but got an error: `{err}`");
     }
-    match run(name, input) {
+    match run(name, input, heap_size) {
         Err(err) => {
             panic!("expected a successful execution, but got an error: `{err}`");
         }
@@ -171,8 +201,14 @@ fn run_success_test(name: &str, file: &Path, expected: &str, input: Option<&str>
     }
 }
 
-fn run_runtime_error_test_eval(file: &Path, expected: &str, input: Option<&str>) {
-    match eval(file, input) {
+#[allow(dead_code)]
+fn run_runtime_error_test_eval(
+    file: &Path,
+    expected: &str,
+    input: Option<&str>,
+    heap_size: Option<usize>,
+) {
+    match eval(file, input, heap_size) {
         Ok(out) => {
             panic!("eval: expected a runtime error, but program executed succesfully: `{out}`");
         }
@@ -183,11 +219,18 @@ fn run_runtime_error_test_eval(file: &Path, expected: &str, input: Option<&str>)
     }
 }
 
-fn run_runtime_error_test(name: &str, file: &Path, expected: &str, input: Option<&str>) {
+#[allow(dead_code)]
+fn run_runtime_error_test(
+    name: &str,
+    file: &Path,
+    expected: &str,
+    input: Option<&str>,
+    heap_size: Option<usize>,
+) {
     if let Err(err) = compile(name, file) {
         panic!("expected a successful compilation, but got an error: `{err}`");
     }
-    match run(name, input) {
+    match run(name, input, heap_size) {
         Ok(out) => {
             panic!("expected a runtime error, but program executed succesfully - expected error: `{expected}`, output: `{out}`");
         }
@@ -195,8 +238,9 @@ fn run_runtime_error_test(name: &str, file: &Path, expected: &str, input: Option
     }
 }
 
+#[allow(dead_code)]
 fn run_static_error_test_eval(file: &Path, expected: &str, input: Option<&str>) {
-    match eval(file, input) {
+    match eval(file, input, None) {
         Ok(s) => panic!("eval: expected a failure, but compilation succeeded: {s}"),
         Err(err) => {
             println!("eval:");
@@ -205,6 +249,7 @@ fn run_static_error_test_eval(file: &Path, expected: &str, input: Option<&str>) 
     }
 }
 
+#[allow(dead_code)]
 fn run_static_error_test(name: &str, file: &Path, expected: &str) {
     match compile(name, file) {
         Ok(()) => {
@@ -216,6 +261,7 @@ fn run_static_error_test(name: &str, file: &Path, expected: &str) {
     }
 }
 
+#[allow(dead_code)]
 fn compile(name: &str, file: &Path) -> Result<(), String> {
     // Run the compiler
     let compiler: PathBuf = ["target", "debug", env!("CARGO_PKG_NAME")].iter().collect();
@@ -238,23 +284,25 @@ fn compile(name: &str, file: &Path) -> Result<(), String> {
     Ok(())
 }
 
-fn eval(file: &Path, input: Option<&str>) -> Result<String, String> {
+#[allow(dead_code)]
+fn eval(file: &Path, input: Option<&str>, heap_size: Option<usize>) -> Result<String, String> {
     // Run the compiler
     let arch = "x86_64-apple-darwin";
     let mut cmd = Command::new(
-        [
-            "target",
-            arch,
-            "debug",
-            env!("CARGO_PKG_NAME"),
-        ]
-        .iter()
-        .collect::<PathBuf>(),
+        ["target", arch, "debug", env!("CARGO_PKG_NAME")]
+            .iter()
+            .collect::<PathBuf>(),
     );
     cmd.args(["-e", &format!("{}", file.to_str().unwrap())]);
 
     if let Some(input) = input {
         cmd.arg(input);
+    }
+    if let Some(heap_size) = heap_size {
+        if input.is_none() {
+            cmd.arg("false");
+        }
+        cmd.arg(heap_size.to_string());
     }
 
     println!("{:?} {:?}", cmd.get_program(), cmd.get_args());
@@ -268,10 +316,17 @@ fn eval(file: &Path, input: Option<&str>) -> Result<String, String> {
     }
 }
 
-fn run(name: &str, input: Option<&str>) -> Result<String, String> {
+#[allow(dead_code)]
+fn run(name: &str, input: Option<&str>, heap_size: Option<usize>) -> Result<String, String> {
     let mut cmd = Command::new(&mk_path(name, Ext::Run));
     if let Some(input) = input {
         cmd.arg(input);
+    }
+    if let Some(heap_size) = heap_size {
+        if input.is_none() {
+            cmd.arg("false");
+        }
+        cmd.arg(heap_size.to_string());
     }
     let output = cmd.output().unwrap();
     if output.status.success() {

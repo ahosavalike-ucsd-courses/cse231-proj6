@@ -1021,13 +1021,13 @@ pub fn compile_expr(e: &Expr, co: &Context, com: &mut ContextMut) -> Vec<Instr> 
             // Set target to address and tag with 1
             instrs.push(Mov(co.src_to_target(OReg(Rbx))));
             instrs.push(Add(co.src_to_target(Imm(1))));
-            // Move heap offset
+            // Move heap offset, two words extra for GC and length
             instrs.push(Add(ToMem(
                 MemRef {
                     reg: R15,
                     offset: 0,
                 },
-                Imm(8 * (1 + es.len() as i32)),
+                Imm(8 * (2 + es.len() as i32)),
             )));
             com.result_type = Some(List);
         }
