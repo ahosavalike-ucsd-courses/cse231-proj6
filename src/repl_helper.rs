@@ -218,13 +218,12 @@ pub fn add_interface_calls(
     } else {
         dynasm!(ops; .arch x64; mov rax, QWORD snek_error_print as _);
     }
-    dynasm!(ops;
-        .arch x64;
-        mov rsp, [r15 + 16];
-        pop rbp;
-        push rbp;
-        call rax;
-        ret
+    dynasm!(ops
+        ; .arch x64
+        ; mov rsp, [r15 + 16]
+        ; pop rbp
+        ; jmp rax
+        ; ret
     );
 
     let snek_print_lbl = ops.new_dynamic_label();
@@ -232,20 +231,30 @@ pub fn add_interface_calls(
     dynasm!(ops
         ; .arch x64
         ; =>snek_print_lbl
-        ; push rbp
         ; mov rax, QWORD print_result as _
-        ; call rax
-        ; pop rbp
+        ; jmp rax
         ; ret
     );
 
     let snek_deep_equal_lbl = ops.new_dynamic_label();
     lbls.insert(Label::new(Some("snek_deep_equal")), snek_deep_equal_lbl);
-    dynasm!(ops; .arch x64; =>snek_deep_equal_lbl; mov rax, QWORD deep_equal as _; call rax; ret);
+    dynasm!(ops
+        ; .arch x64
+        ; =>snek_deep_equal_lbl
+        ; mov rax, QWORD deep_equal as _
+        ; jmp rax
+        ; ret
+    );
 
     let snek_try_gc_lbl = ops.new_dynamic_label();
     lbls.insert(Label::new(Some("snek_try_gc")), snek_try_gc_lbl);
-    dynasm!(ops; .arch x64; =>snek_try_gc_lbl; mov rax, QWORD snek_try_gc as _; call rax; ret);
+    dynasm!(ops
+        ; .arch x64
+        ; =>snek_try_gc_lbl
+        ; mov rax, QWORD snek_try_gc as _
+        ; jmp rax
+        ; ret
+    );
 }
 
 pub fn parse_input(input: &str) -> (i64, Option<Type>) {
