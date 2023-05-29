@@ -648,7 +648,7 @@ pub fn compile_expr(e: &Expr, co: &Context, com: &mut ContextMut) -> Vec<Instr> 
             let co = &co.modify_tail(false);
             let co_child = &co.modify_target(None);
 
-            // Compile list
+            // Compile list to Rax
             instrs.extend(compile_expr(lst, co_child, com));
             // Copy to stack
             instrs.push(Mov(ToMem(
@@ -702,8 +702,10 @@ pub fn compile_expr(e: &Expr, co: &Context, com: &mut ContextMut) -> Vec<Instr> 
                     return instrs;
                 }
             }
-
-            // 1 <= Index(snek) <= length(int)
+            // Save index
+            instrs.push(Mov(ToMem(MemRef { reg: Rsp, offset: co.si+1 }, OReg(Rax))));
+            // Compile value
+            instrs.extend(compile_expr(val, &co_child.modify_si(co.si + 2), com));
             instrs.extend(vec![
                 // Get heap address
                 Mov(ToReg(
@@ -713,10 +715,17 @@ pub fn compile_expr(e: &Expr, co: &Context, com: &mut ContextMut) -> Vec<Instr> 
                         offset: co.si,
                     }),
                 )),
+                // Get index
+                Mov(ToReg(Rdi, Mem(MemRef { reg: Rsp, offset: co.si+1 }))),
+                // Save value to stack
+                Mov(ToMem(MemRef { reg: Rsp, offset: co.si+1 }, OReg(Rax))),
+                // Bring index to Rax
+                Mov(ToReg(Rax, OReg(Rdi))),
                 // Remove tag from address
                 Sub(ToReg(Rbx, Imm(1))),
                 // Convert index from snek to number
                 Sar(Rax, 1),
+                // 1 <= Index(snek) <= length(int) test
                 // Error code index out of bounds
                 Mov(ToReg(Rdi, Imm(40))),
                 // Test upper bound
@@ -736,28 +745,8 @@ pub fn compile_expr(e: &Expr, co: &Context, com: &mut ContextMut) -> Vec<Instr> 
                 // Add offset to Rbx, multiply 8 = shift 3
                 Sal(Rax, 3),
                 Add(ToReg(Rbx, OReg(Rax))),
-                // Save this
-                Mov(ToMem(
-                    MemRef {
-                        reg: Rsp,
-                        offset: co.si + 1,
-                    },
-                    OReg(Rbx),
-                )),
-            ]);
-
-            // Compile value
-            instrs.extend(compile_expr(val, &co_child.modify_si(co.si + 2), com));
-            instrs.extend(vec![
-                // Get address
-                Mov(ToReg(
-                    Rbx,
-                    Mem(MemRef {
-                        reg: Rsp,
-                        offset: co.si + 1,
-                    }),
-                )),
                 // Copy value
+                Mov(ToReg(Rax, Mem(MemRef { reg: Rsp, offset: co.si+1 }))),
                 Mov(ToMem(
                     MemRef {
                         reg: Rbx,
@@ -976,6 +965,14 @@ pub fn compile_expr(e: &Expr, co: &Context, com: &mut ContextMut) -> Vec<Instr> 
                         reg: R15,
                         offset: 0,
                     }),
+                )),
+                // Clear GC word
+                Mov(ToMem(
+                    MemRef {
+                        reg: Rbx,
+                        offset: 0,
+                    },
+                    Imm(0),
                 )),
                 // Length as the second value
                 Mov(ToMem(
