@@ -3,7 +3,7 @@ use im::HashMap;
 
 use crate::compiler::*;
 use crate::structs::*;
-use crate::repl::HEAP_START;
+use crate::repl::{HEAP_START, HEAP_META_SIZE};
 use im::HashSet;
 
 pub fn snek_error_exit(errcode: i64) {
@@ -35,14 +35,14 @@ pub fn snek_error_print(errcode: i64) {
     );
 }
 
-unsafe fn snek_try_gc(count: isize, curr_rbp: *const u64, curr_rsp: *const u64) -> *const u64 {
+unsafe fn snek_try_gc(count: isize, curr_rbp: *const u64, curr_rsp: *const u64) {
     let heap_end = *HEAP_START.add(1) as *const u64;
     let new_heap_ptr = snek_gc(curr_rbp, curr_rsp);
     if heap_end.offset_from(new_heap_ptr) < count {
         eprintln!("out of memory");
         std::process::exit(5)
     }
-    new_heap_ptr
+    *(HEAP_START.add(1) as *mut u64) = new_heap_ptr as u64;
 }
 
 unsafe fn snek_gc(curr_rbp: *const u64, curr_rsp: *const u64) -> *const u64 {
@@ -74,7 +74,7 @@ unsafe fn root_set(
     let mut stack_ptr = curr_rsp;
     let mut set = vec![];
     while stack_base.offset_from(stack_ptr) > 0 {
-        while curr_rbp.offset_from(stack_ptr) > 0 {
+        while curr_rbp.offset_from(stack_ptr) > 1 {
             match *stack_ptr {
                 x if x & 3 == 1 && x != 1 => {
                     set.push((stack_ptr, (x - 1) as *const u64));
@@ -83,9 +83,9 @@ unsafe fn root_set(
             }
             stack_ptr = stack_ptr.add(1);
         }
+        curr_rbp = *stack_ptr.sub(1) as *const u64;
         // Skip rbp and ret ptr
         stack_ptr = stack_ptr.add(2);
-        curr_rbp = *curr_rbp as *const u64;
     }
     set
 }
@@ -109,8 +109,8 @@ unsafe fn mark(ele: *mut u64) {
 }
 
 unsafe fn forward_headers(heap_ptr: *const u64) {
-    let mut from = HEAP_START as *mut u64;
-    let mut to = HEAP_START as *mut u64;
+    let mut from = HEAP_START.add(HEAP_META_SIZE) as *mut u64;
+    let mut to = HEAP_START.add(HEAP_META_SIZE) as *mut u64;
     while heap_ptr.offset_from(from) > 0 {
         // If from is marked as live
         if *from & 1 == 1 {
@@ -138,10 +138,11 @@ unsafe fn forward_heap_refs(heap_addr: *mut u64) {
 }
 
 unsafe fn compact(heap_ptr: *const u64) -> *const u64 {
-    let mut ptr = HEAP_START as *mut u64;
-    let mut r15 = HEAP_START;
+    let mut ptr = HEAP_START.add(HEAP_META_SIZE) as *mut u64;
+    let mut r15 = HEAP_START.add(HEAP_META_SIZE);
     while heap_ptr.offset_from(ptr) > 0 {
-        let len = *ptr.add(1) as usize + 2; // +2 to include metadata
+        // +2 to include metadata
+        let len = *ptr.add(1) as usize + 2;
         // If GC word is zero, garbage, skip
         if *ptr == 0 {
             ptr = ptr.add(len);
@@ -162,6 +163,46 @@ unsafe fn compact(heap_ptr: *const u64) -> *const u64 {
         r15 = dst.add(len);
     }
     r15
+}
+
+#[allow(dead_code)]
+unsafe fn print_heap(heap_ptr: Option<*const u64>) {
+    let heap_ptr = if heap_ptr.is_some() {
+        heap_ptr.unwrap()
+    } else {
+        *HEAP_START as *const u64
+    };
+    println!("Heap: ");
+    let mut ptr = HEAP_START;
+    println!("{ptr:p}: {:#x} {:#x} {:#x}", *ptr, *ptr.add(1), *ptr.add(2));
+
+    ptr = ptr.add(3);
+    let mut next = ptr.add(*ptr.add(1) as usize + 2);
+    print!("{ptr:p}: ");
+    while heap_ptr.offset_from(ptr) > 0 {
+        print!("{:#x} ", *ptr);
+        ptr = ptr.add(1);
+
+        if next.offset_from(ptr) <= 0 {
+            println!("");
+            next = ptr.add(*ptr.add(1) as usize + 2);
+            print!("{ptr:p}: ");
+        }
+    }
+    println!("End heap");
+}
+
+#[allow(dead_code)]
+unsafe fn snek_print_stack(curr_rsp: *const u64) {
+    let stack_base = *HEAP_START.add(2) as *const u64;
+    let mut ptr = curr_rsp;
+    println!("-----------------------------------------");
+    while ptr <= stack_base {
+        let val = *ptr;
+        println!("{ptr:?}: {:#0x}", val);
+        ptr = ptr.add(1);
+    }
+    println!("-----------------------------------------");
 }
 
 pub fn add_interface_calls(
@@ -193,7 +234,7 @@ pub fn add_interface_calls(
     dynasm!(ops; .arch x64; =>snek_deep_equal_lbl; mov rax, QWORD deep_equal as _; call rax; ret);
 
     let snek_try_gc_lbl = ops.new_dynamic_label();
-    lbls.insert(Label::new(Some("snek_try_gc")), snek_deep_equal_lbl);
+    lbls.insert(Label::new(Some("snek_try_gc")), snek_try_gc_lbl);
     dynasm!(ops; .arch x64; =>snek_try_gc_lbl; mov rax, QWORD snek_try_gc as _; call rax; ret);
 }
 

@@ -17,7 +17,11 @@ fn main() -> std::io::Result<()> {
     let args: Vec<String> = env::args().collect();
 
     if args[1] == "-i" {
-        return Ok(repl(None));
+        return Ok(repl(None, if args.len() > 2 {
+            Some(args[2].parse::<usize>().expect("heap size should be usize"))
+        } else {
+            None
+        }));
     }
 
     let in_name = if args[1] == "-e" { &args[2] } else { &args[1] };
@@ -30,11 +34,18 @@ fn main() -> std::io::Result<()> {
         parse_top_level(&parse(&format!("(\n{in_contents}\n)").to_string()).expect("Invalid"));
 
     if args[1] == "-e" {
-        return Ok(repl(Some((
-            &funcs,
-            &expr,
-            if args.len() > 3 { &args[3] } else { "false" },
-        ))));
+        return Ok(repl(
+            Some((
+                &funcs,
+                &expr,
+                if args.len() > 3 { &args[3] } else { "false" },
+            )),
+            if args.len() > 4 {
+                Some(args[4].parse::<usize>().expect("heap size should be usize"))
+            } else {
+                None
+            },
+        ));
     }
 
     let com = &mut ContextMut::new();
@@ -70,7 +81,6 @@ ret
     let out_name = &args[2];
     let mut out_file = File::create(out_name)?;
     out_file.write_all(asm_program.as_bytes())?;
-    // repl(Some(&result));
 
     Ok(())
 }

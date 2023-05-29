@@ -19,6 +19,7 @@ static FUNCTIONS: Lazy<Mutex<HashMap<u64, FunDefEnv>>> = Lazy::new(|| Mutex::new
 static LABELS: Lazy<Mutex<HashMap<Label, DynamicLabel>>> = Lazy::new(|| Mutex::new(hashmap! {}));
 static FUNCTION_INDEX: Mutex<u64> = Mutex::new(0);
 pub static mut HEAP_START: *const u64 = std::ptr::null();
+pub static HEAP_META_SIZE: usize = 3;
 
 // Compiles the initial stub for the function
 fn function_compile_initial(
@@ -123,25 +124,23 @@ fn eval(
     jitted_fn()
 }
 
-pub fn repl(eval_input: Option<(&Vec<Expr>, &Expr, &str)>) {
+pub fn repl(eval_input: Option<(&Vec<Expr>, &Expr, &str)>, heap_size: Option<usize>) {
     // Initial define stack size low to see reallocations
     let mut define_stack: Vec<u64> = vec![0; 1];
 
-    let heap_size = 16384;
-    let heap_meta = 3;
-    let heap_len = heap_meta + heap_size;
+    let heap_size = heap_size.unwrap_or(16384);
+    let heap_len = HEAP_META_SIZE + heap_size;
     let mut heap = vec![0; heap_len];
     // Placeholder for offset
-    heap[0] = unsafe { heap.as_mut_ptr().add(heap_meta) } as u64;
+    heap[0] = unsafe { heap.as_mut_ptr().add(HEAP_META_SIZE) } as u64;
     // Placeholder for end of heap
-    heap[1] = unsafe { heap.as_mut_ptr().add(heap_len - 1) } as u64;
+    heap[1] = unsafe { heap.as_mut_ptr().add(heap_len) } as u64;
     // Placeholder for Rsp base
     heap[2] = 0;
 
     unsafe { HEAP_START = heap.as_ptr() };
 
     let mut co = Context::new(Some(define_stack.as_mut_ptr())).modify_si(1);
-    COM.lock().unwrap().curr_heap_ptr = heap.as_mut_ptr() as i64;
 
     let mut input = (FALSE_VAL, Some(Type::Bool));
 
@@ -347,7 +346,10 @@ pub fn repl(eval_input: Option<(&Vec<Expr>, &Expr, &str)>) {
             // Add heap reference
             instrs.insert(
                 0,
-                Instr::Mov(MovArgs::ToReg(Reg::R15, Arg64::Imm64(com.curr_heap_ptr))),
+                Instr::Mov(MovArgs::ToReg(
+                    Reg::R15,
+                    Arg64::Imm64(unsafe { HEAP_START } as i64),
+                )),
             );
 
             // for i in &*instrs {

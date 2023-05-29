@@ -127,7 +127,6 @@ pub struct ContextMut {
     pub result_type: Option<Type>,
     pub fns: HashMap<String, FunEnv>,
     pub depth: i32,
-    pub curr_heap_ptr: i64,
 }
 
 impl ContextMut {
@@ -138,7 +137,6 @@ impl ContextMut {
             result_type: None,
             fns: hashmap! {},
             depth: 0,
-            curr_heap_ptr: 0,
         }
     }
     pub fn index_used(&mut self) {
