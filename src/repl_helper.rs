@@ -2,11 +2,11 @@ use dynasmrt::{dynasm, x64::Assembler, DynamicLabel, DynasmApi, DynasmLabelApi};
 use im::HashMap;
 
 use crate::compiler::*;
+use crate::repl::{HEAP_META_SIZE, HEAP_START};
 use crate::structs::*;
-use crate::repl::{HEAP_START, HEAP_META_SIZE};
 use im::HashSet;
 
-pub fn snek_error_exit(errcode: i64) {
+pub extern "C" fn snek_error_exit(errcode: i64) {
     // print error message according to writeup
     eprintln!(
         "an error ocurred {errcode}: {}",
@@ -21,7 +21,7 @@ pub fn snek_error_exit(errcode: i64) {
     std::process::exit(1);
 }
 
-pub fn snek_error_print(errcode: i64) {
+pub extern "C" fn snek_error_print(errcode: i64) {
     // print error message according to writeup
     eprintln!(
         "an error ocurred {errcode}: {}",
@@ -35,7 +35,7 @@ pub fn snek_error_print(errcode: i64) {
     );
 }
 
-unsafe fn snek_try_gc(count: isize, curr_rbp: *const u64, curr_rsp: *const u64) {
+unsafe extern "C" fn snek_try_gc(count: isize, curr_rbp: *const u64, curr_rsp: *const u64) {
     let heap_end = *HEAP_START.add(1) as *const u64;
     let new_heap_ptr = snek_gc(curr_rbp, curr_rsp);
     if heap_end.offset_from(new_heap_ptr) < count {
@@ -74,7 +74,7 @@ unsafe fn root_set(
     let mut stack_ptr = curr_rsp;
     let mut set = vec![];
     while stack_base.offset_from(stack_ptr) > 0 {
-        while curr_rbp.offset_from(stack_ptr) > 1 {
+        while curr_rbp.offset_from(stack_ptr) > 0 {
             match *stack_ptr {
                 x if x & 3 == 1 && x != 1 => {
                     set.push((stack_ptr, (x - 1) as *const u64));
@@ -83,7 +83,7 @@ unsafe fn root_set(
             }
             stack_ptr = stack_ptr.add(1);
         }
-        curr_rbp = *stack_ptr.sub(1) as *const u64;
+        curr_rbp = *stack_ptr as *const u64;
         // Skip rbp and ret ptr
         stack_ptr = stack_ptr.add(2);
     }
@@ -92,7 +92,7 @@ unsafe fn root_set(
 
 // This function marks all references to heap given a starting heap value
 unsafe fn mark(ele: *mut u64) {
-    if *ele & 1 == 1 {
+    if *ele == 1 {
         return;
     }
     // Mark
@@ -113,7 +113,7 @@ unsafe fn forward_headers(heap_ptr: *const u64) {
     let mut to = HEAP_START.add(HEAP_META_SIZE) as *mut u64;
     while heap_ptr.offset_from(from) > 0 {
         // If from is marked as live
-        if *from & 1 == 1 {
+        if *from == 1 {
             // Fill src GC word with dst address
             *from = to as u64;
             to = to.add(*from.add(1) as usize + 2);
@@ -220,14 +220,24 @@ pub fn add_interface_calls(
     }
     dynasm!(ops;
         .arch x64;
-        mov rsp, [r15 + 8];
+        mov rsp, [r15 + 16];
+        pop rbp;
+        push rbp;
         call rax;
         ret
     );
 
     let snek_print_lbl = ops.new_dynamic_label();
     lbls.insert(Label::new(Some("snek_print")), snek_print_lbl);
-    dynasm!(ops; .arch x64; =>snek_print_lbl; mov rax, QWORD print_result as _; call rax; ret);
+    dynasm!(ops
+        ; .arch x64
+        ; =>snek_print_lbl
+        ; push rbp
+        ; mov rax, QWORD print_result as _
+        ; call rax
+        ; pop rbp
+        ; ret
+    );
 
     let snek_deep_equal_lbl = ops.new_dynamic_label();
     lbls.insert(Label::new(Some("snek_deep_equal")), snek_deep_equal_lbl);
@@ -279,7 +289,7 @@ pub fn deep_equal_recurse(l: i64, r: i64, seen: &mut HashSet<(i64, i64)>) -> boo
     return true;
 }
 
-fn deep_equal(l: i64, r: i64) -> i64 {
+extern "C" fn deep_equal(l: i64, r: i64) -> i64 {
     if deep_equal_recurse(l, r, &mut HashSet::new()) {
         TRUE_VAL
     } else {
@@ -345,7 +355,8 @@ pub fn asm_repl_func_defn(
     // Compile new Stub
     dynasm!(ops; .arch x64; => stub);
     for (i, arg) in arg_types.iter().enumerate() {
-        let i = (i as i32 - f.depth) * 8;
+        // -1 to skip Rbp
+        let i = (i as i32 - f.depth - 1) * 8;
         match arg {
             Type::Int => {
                 dynasm!(ops; .arch x64; test [rsp+i], 1; jnz =>slow);
@@ -386,26 +397,14 @@ pub fn asm_repl_func_defn(
         com.depth = f.depth;
         instrs.extend(vec![
             Instr::LabelI(Label::new(Some(&format!("fns_{name}")))),
-            Instr::Mov(MovArgs::ToMem(
-                MemRef {
-                    reg: Reg::Rsp,
-                    offset: -1,
-                },
-                Arg64::OReg(Reg::Rbp),
-            )),
+            Instr::Push(Reg::Rbp),
             Instr::Mov(MovArgs::ToReg(Reg::Rbp, Arg64::OReg(Reg::Rsp))),
             Instr::Sub(MovArgs::ToReg(Reg::Rsp, Arg64::Imm(com.depth * 8))),
         ]);
         instrs.extend(compile_expr(&body, &co, com));
         instrs.extend(vec![
             Instr::Add(MovArgs::ToReg(Reg::Rsp, Arg64::Imm(com.depth * 8))),
-            Instr::Mov(MovArgs::ToReg(
-                Reg::Rbp,
-                Arg64::Mem(MemRef {
-                    reg: Reg::Rsp,
-                    offset: -1,
-                }),
-            )),
+            Instr::Pop(Reg::Rbp),
             Instr::Ret,
         ]);
 
@@ -429,30 +428,17 @@ pub fn asm_repl_func_defn(
         com.depth = f.depth;
         instrs.extend(vec![
             Instr::LabelI(Label::new(Some(&format!("fnf_{name}")))),
-            Instr::Mov(MovArgs::ToMem(
-                MemRef {
-                    reg: Reg::Rsp,
-                    offset: -1,
-                },
-                Arg64::OReg(Reg::Rbp),
-            )),
+            Instr::Push(Reg::Rbp),
             Instr::Mov(MovArgs::ToReg(Reg::Rbp, Arg64::OReg(Reg::Rsp))),
             Instr::Sub(MovArgs::ToReg(Reg::Rsp, Arg64::Imm(com.depth * 8))),
         ]);
         instrs.extend(compile_expr(&body, &co, com));
         instrs.extend(vec![
             Instr::Add(MovArgs::ToReg(Reg::Rsp, Arg64::Imm(com.depth * 8))),
-            Instr::Mov(MovArgs::ToReg(
-                Reg::Rbp,
-                Arg64::Mem(MemRef {
-                    reg: Reg::Rsp,
-                    offset: -1,
-                }),
-            )),
+            Instr::Pop(Reg::Rbp),
             Instr::Ret,
         ]);
 
-        
         // Assemble both the fast and slow versions
         instrs_to_asm(&instrs, ops, lbls);
     } else {

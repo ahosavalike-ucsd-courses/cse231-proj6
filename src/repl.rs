@@ -57,12 +57,14 @@ fn function_compile_initial(
     dynasm!(ops
         ; .arch x64
         ; => stub
+        ; push rbp
         ; sub rsp, depth * 8
         ; mov rax, QWORD function_compile_runtime as _
         ; mov rdi, QWORD fi as i64
         ; mov rsi, rsp
         ; call rax
         ; add rsp, depth * 8
+        ; pop rbp
         // since fast is still not compiled, first time will have to go through the modified stub
         ; jmp =>stub
         // should not happen!
@@ -71,7 +73,7 @@ fn function_compile_initial(
 }
 
 // Compiles the slow and fast versions of the function
-fn function_compile_runtime(fi: u64, stack: u64) {
+extern "C" fn function_compile_runtime(fi: u64, stack: u64) {
     let f = FUNCTIONS.lock().unwrap().get(&fi).unwrap().clone();
     let mut arg_types = Vec::with_capacity(f.argc as usize);
 
@@ -352,9 +354,6 @@ pub fn repl(eval_input: Option<(&Vec<Expr>, &Expr, &str)>, heap_size: Option<usi
                 )),
             );
 
-            // for i in &*instrs {
-            //     println!("{i:?}");
-            // }
             print_result(eval(ops, com, labels, instrs));
         };
 
