@@ -129,7 +129,7 @@ pub unsafe fn snek_try_gc(count: isize, curr_rbp: *const u64, curr_rsp: *const u
         eprintln!("out of memory");
         std::process::exit(5)
     }
-    *(HEAP_START.add(1) as *mut u64) = new_heap_ptr as u64;
+    *(HEAP_START as *mut u64) = new_heap_ptr as u64;
 }
 
 #[export_name = "\x01snek_gc"]
@@ -162,7 +162,7 @@ unsafe fn root_set(
     let mut stack_ptr = curr_rsp;
     let mut set = vec![];
     while stack_base.offset_from(stack_ptr) > 0 {
-        while curr_rbp.offset_from(stack_ptr) > 1 {
+        while curr_rbp.offset_from(stack_ptr) > 0 {
             match *stack_ptr {
                 x if x & 3 == 1 && x != 1 => {
                     set.push((stack_ptr, (x - 1) as *const u64));
@@ -171,7 +171,7 @@ unsafe fn root_set(
             }
             stack_ptr = stack_ptr.add(1);
         }
-        curr_rbp = *stack_ptr.sub(1) as *const u64;
+        curr_rbp = *stack_ptr as *const u64;
         // Skip rbp and ret ptr
         stack_ptr = stack_ptr.add(2);
     }
@@ -180,7 +180,7 @@ unsafe fn root_set(
 
 // This function marks all references to heap given a starting heap value
 unsafe fn mark(ele: *mut u64) {
-    if *ele & 1 == 1 {
+    if *ele == 1 {
         return;
     }
     // Mark
@@ -201,7 +201,7 @@ unsafe fn forward_headers(heap_ptr: *const u64) {
     let mut to = HEAP_START.add(HEAP_META_SIZE) as *mut u64;
     while heap_ptr.offset_from(from) > 0 {
         // If from is marked as live
-        if *from & 1 == 1 {
+        if *from == 1 {
             // Fill src GC word with dst address
             *from = to as u64;
             to = to.add(*from.add(1) as usize + 2);

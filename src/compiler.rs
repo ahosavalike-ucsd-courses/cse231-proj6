@@ -969,6 +969,14 @@ pub fn compile_expr(e: &Expr, co: &Context, com: &mut ContextMut) -> Vec<Instr> 
 
                 // Continue if success
                 LabelI(alloc_succ),
+                // Get heap head again
+                Mov(ToReg(
+                    Rbx,
+                    Mem(MemRef {
+                        reg: R15,
+                        offset: 0,
+                    }),
+                )),
                 // Length as the second value
                 Mov(ToMem(
                     MemRef {
