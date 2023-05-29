@@ -77,6 +77,15 @@ unsafe fn root_set(
         while curr_rbp.offset_from(stack_ptr) > 0 {
             match *stack_ptr {
                 x if x & 3 == 1 && x != 1 => {
+                    // TODO: Hacky fix. Understand why the stack value has the tag but not a correct pointer
+                    // Ex. ./tests/bst_invert.run 10 102
+                    if (x as *const u64).offset_from(HEAP_START) < 0
+                        || (*HEAP_START as *const u64).offset_from(x as *const u64) < 0
+                    {
+                        println!("Ignoring stack value: {x:#x}");
+                        stack_ptr = stack_ptr.add(1);
+                        continue;
+                    }
                     set.push((stack_ptr, (x - 1) as *const u64));
                 }
                 _ => (),
