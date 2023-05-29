@@ -74,7 +74,7 @@ unsafe fn root_set(
     let mut stack_ptr = curr_rsp;
     let mut set = vec![];
     while stack_base.offset_from(stack_ptr) > 0 {
-        while curr_rbp.offset_from(stack_ptr) > 0 {
+        while curr_rbp.offset_from(stack_ptr) > 1 {
             match *stack_ptr {
                 x if x & 3 == 1 && x != 1 => {
                     // TODO: Hacky fix. Understand why the stack value has the tag but not a correct pointer
@@ -456,6 +456,7 @@ pub fn asm_repl_func_defn(
             Instr::Pop(Reg::Rbp),
             Instr::Ret,
         ]);
+
 
         // Assemble both the fast and slow versions
         instrs_to_asm(&instrs, ops, lbls);
