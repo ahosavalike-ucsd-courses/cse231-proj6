@@ -48,7 +48,7 @@ fn depth(e: &Expr) -> i32 {
         Expr::Set(_, e) => depth(e),
         Expr::SetLst(lst, idx, val) => depth(lst).max(1 + depth(idx)).max(2 + depth(val)),
         Expr::Define(_, e) => depth(e),
-        Expr::FnDefn(_, v, b) => depth_aligned(b, v.len() as i32 + 1), // 1 for saving Rbp
+        Expr::FnDefn(_, v, b) => depth_aligned(b, v.len() as i32),
         Expr::FnCall(_, args) => args
             .iter()
             .enumerate()
@@ -60,9 +60,9 @@ fn depth(e: &Expr) -> i32 {
 }
 
 pub fn depth_aligned(e: &Expr, extra: i32) -> i32 {
-    // Off aligned 16byte depth
+    // Aligned 16byte depth
     let d = depth(e) + extra;
-    if d % 2 != 0 {
+    if d % 2 == 0 {
         d
     } else {
         d + 1
@@ -109,26 +109,14 @@ pub fn compile_func_defns(fns: &Vec<Expr>, com: &mut ContextMut) -> Vec<Instr> {
 
             instrs.push(LabelI(Label::new(Some(&format!("fun_{name}")))));
             instrs.extend(vec![
-                Mov(ToMem(
-                    MemRef {
-                        reg: Rsp,
-                        offset: -1,
-                    },
-                    OReg(Rbp),
-                )),
+                Push(Rbp),
                 Mov(ToReg(Rbp, OReg(Rsp))),
                 Sub(ToReg(Rsp, Imm(com.depth * 8))),
             ]);
             instrs.extend(compile_expr(body, &co, com));
             instrs.extend(vec![
                 Add(ToReg(Rsp, Imm(com.depth * 8))),
-                Mov(ToReg(
-                    Rbp,
-                    Mem(MemRef {
-                        reg: Rsp,
-                        offset: -1,
-                    }),
-                )),
+                Pop(Rbp),
                 Ret,
             ]);
         }
@@ -154,23 +142,17 @@ pub fn compile_expr_aligned(
     }
     let com = com_;
 
-    com.depth = depth_aligned(e, 2); // 1 for rbp, 1 extra for input
+    com.depth = depth_aligned(e, 1); // 1 extra for input
 
     let mut instrs: Vec<Instr> = vec![
         // Heap's second word saves the initial RSP, used to restore on runtime error
+        Push(Rbp),
         Mov(ToMem(
             MemRef {
                 reg: R15,
                 offset: 2,
             },
             OReg(Rsp),
-        )),
-        Mov(ToMem(
-            MemRef {
-                reg: Rsp,
-                offset: -1,
-            },
-            OReg(Rbp),
         )),
         Mov(ToReg(Rbp, OReg(Rsp))),
         Sub(ToReg(Rsp, Imm(com.depth * 8))),
@@ -192,13 +174,7 @@ pub fn compile_expr_aligned(
     ));
     instrs.extend(vec![
         Add(ToReg(Rsp, Imm(com.depth * 8))),
-        Mov(ToReg(
-            Rbp,
-            Mem(MemRef {
-                reg: Rsp,
-                offset: -1,
-            }),
-        )),
+        Pop(Rbp),
     ]);
     return instrs;
 }
@@ -916,6 +892,7 @@ pub fn compile_expr(e: &Expr, co: &Context, com: &mut ContextMut) -> Vec<Instr> 
                 }
                 // Bring RSP to ret ptr
                 instrs.push(Add(ToReg(Rsp, Imm(com.depth * 8))));
+                instrs.push(Pop(Rbp));
                 instrs.push(JumpI(Jump::U(Label::new(Some(&format!("fun_{name}"))))))
                 // Already in tail position, no need to move to target
             } else {
@@ -931,7 +908,7 @@ pub fn compile_expr(e: &Expr, co: &Context, com: &mut ContextMut) -> Vec<Instr> 
                     instrs.push(Mov(ToMem(
                         MemRef {
                             reg: Rsp,
-                            offset: -(fenv.depth + 1) + i,
+                            offset: -(fenv.depth + 2) + i,
                         },
                         OReg(Rax),
                     )));

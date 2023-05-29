@@ -61,7 +61,8 @@ extern snek_try_gc
 global our_code_starts_here
 snek_error_stub:
  mov rsp, [r15 + 16] ; 3nd word in heap
- mov rbp, [rsp - 8] ; Restore Rbp
+ pop rbp  ; Restore Rbp
+ push rbp ; Align stack
  call snek_error
  ret
 
