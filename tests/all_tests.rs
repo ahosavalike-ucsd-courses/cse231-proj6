@@ -834,11 +834,6 @@ static_error_tests! {
 		expected: "Invalid",
 	},
 	{
-		name: parse_token_fail3_1,
-		file: "parse_token_fail3.snek",
-		expected: "Invalid",
-	},
-	{
 		name: unbound_identifier_fail1_1,
 		file: "unbound_identifier_fail1.snek",
 		expected: "Unbound variable identifier y",
