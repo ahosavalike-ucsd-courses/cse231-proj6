@@ -1305,8 +1305,9 @@ pub fn instrs_to_string(instrs: &Vec<Instr>) -> String {
 pub fn instrs_to_asm(
     cmds: &Vec<Instr>,
     ops: &mut dynasmrt::x64::Assembler,
-    lbls: &mut HashMap<Label, DynamicLabel>,
+    lbls: &HashMap<Label, DynamicLabel>,
 ) {
+    let lbls = &mut lbls.clone();
     cmds.iter().for_each(|c| {
         if let LabelI(l) = c {
             if lbls.get(&l).is_none() {

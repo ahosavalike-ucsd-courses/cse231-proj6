@@ -105,11 +105,11 @@ extern "C" fn function_compile_runtime(fi: u64, stack: u64) {
 fn eval(
     mut ops: MutexGuard<Assembler>,
     com: MutexGuard<ContextMut>,
-    mut labels: MutexGuard<HashMap<Label, DynamicLabel>>,
+    labels: MutexGuard<HashMap<Label, DynamicLabel>>,
     instrs: &Vec<Instr>,
 ) -> i64 {
     let start = ops.offset();
-    instrs_to_asm(&instrs, &mut ops, &mut labels);
+    instrs_to_asm(&instrs, &mut ops, &labels);
     dynasm!(ops; .arch x64; ret);
 
     ops.commit().unwrap();
