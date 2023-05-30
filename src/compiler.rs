@@ -41,6 +41,7 @@ fn depth(e: &Expr) -> i32 {
             .max()
             .unwrap_or(0)
             .max(es.len() as i32),
+        Expr::SizedList(c, v) => depth(c).max(depth(v) + 1).max(2),
         Expr::If(cond, then, other) => depth(cond).max(depth(then)).max(depth(other)),
         Expr::Loop(e) => depth(e),
         Expr::Block(es) => es.iter().map(|expr| depth(expr)).max().unwrap_or(0),
@@ -1027,6 +1028,168 @@ pub fn compile_expr(e: &Expr, co: &Context, com: &mut ContextMut) -> Vec<Instr> 
                 },
                 Imm(8 * (2 + es.len() as i32)),
             )));
+            com.result_type = Some(List);
+        }
+        Expr::SizedList(c, v) => {
+            // Count
+            instrs.extend(compile_expr(c, &co.modify_target(None), com));
+            // Copy to stack after converting to numeric form
+            instrs.push(Sar(Rax, 1));
+            instrs.push(Mov(ToMem(
+                MemRef {
+                    reg: Rsp,
+                    offset: co.si,
+                },
+                OReg(Rax),
+            )));
+            match com.result_type {
+                Some(Int) => {}
+                Some(_) => {
+                    instrs.push(Mov(ToReg(Rdi, Imm(23)))); // invalid argument
+                    instrs.push(JumpI(Jump::NZ(snek_error.clone())));
+                }
+                _ => {
+                    instrs.push(Test(ToReg(Rax, Imm(1))));
+                    instrs.push(Mov(ToReg(Rdi, Imm(24)))); // invalid argument
+                    instrs.push(JumpI(Jump::NZ(snek_error.clone())));
+                }
+            }
+
+            let index_valid = com.label("index_valid");
+            let index_zero = com.label("index_zero");
+            instrs.extend(vec![
+                Cmp(ToReg(Rax, Imm(0))),
+                Mov(ToReg(Rdi, Imm(40))),
+                JumpI(Jump::G(index_valid.clone())),
+                Mov(ToReg(Rbx, NIL)),
+                CMovI(CMov::E(Rax, OReg(Rbx))),
+                JumpI(Jump::E(index_zero.clone())),
+                Mov(ToReg(Rdi, Imm(40))),
+                JumpI(Jump::U(snek_error.clone())),
+                LabelI(index_valid),
+            ]);
+
+            // Value
+            instrs.extend(compile_expr(
+                v,
+                &co.modify_target(Some(MemRef {
+                    reg: Rsp,
+                    offset: co.si + 1,
+                }))
+                .modify_si(co.si + 1),
+                com,
+            ));
+
+            let alloc_succ = com.label("alloc_succ");
+            let fill_list = com.label("fill_list");
+            com.index_used();
+            instrs.extend(vec![
+                // Check heap availability
+                Mov(ToReg(
+                    Rax,
+                    Mem(MemRef {
+                        reg: Rsp,
+                        offset: co.si,
+                    }),
+                )),
+                Mov(ToReg(Rdi, OReg(Rax))),
+                Add(ToReg(Rax, Imm(2))), // Metadata length
+                Sal(Rax, 3),             // * 8
+                Add(ToReg(
+                    Rax,
+                    Mem(MemRef {
+                        reg: R15,
+                        offset: 0,
+                    }),
+                )),
+                Cmp(ToReg(
+                    Rax,
+                    Mem(MemRef {
+                        reg: R15,
+                        offset: 1,
+                    }),
+                )),
+                Mov(ToReg(Rbx, OReg(Rdi))),
+                JumpI(Jump::LE(alloc_succ.clone())),
+                // Call GC
+                Mov(ToReg(Rsi, OReg(Rbp))),
+                Mov(ToReg(Rdx, OReg(Rsp))),
+                Call(Label::new(Some("snek_try_gc"))),
+                // Continue
+                LabelI(alloc_succ),
+                // Rbx has count, Rax has base of heap, Rdi has the value to fill
+                Mov(ToReg(
+                    Rax,
+                    Mem(MemRef {
+                        reg: R15,
+                        offset: 0,
+                    }),
+                )),
+                Mov(ToReg(
+                    Rdi,
+                    Mem(MemRef {
+                        reg: Rsp,
+                        offset: co.si + 1,
+                    }),
+                )),
+                // Clear GC word
+                Mov(ToMem(
+                    MemRef {
+                        reg: Rax,
+                        offset: 0,
+                    },
+                    Imm(0),
+                )),
+                // Set length
+                Mov(ToMem(
+                    MemRef {
+                        reg: Rax,
+                        offset: 1,
+                    },
+                    OReg(Rbx),
+                )),
+                Add(ToReg(Rax, Imm(16))),
+                // Fill list
+                LabelI(fill_list.clone()),
+                Mov(ToMem(
+                    MemRef {
+                        reg: Rax,
+                        offset: 0,
+                    },
+                    OReg(Rdi),
+                )),
+                Add(ToReg(Rax, Imm(8))),
+                Sub(ToReg(Rbx, Imm(1))),
+                JumpI(Jump::NZ(fill_list)),
+                // Tag address to return
+                Mov(ToReg(
+                    Rax,
+                    Mem(MemRef {
+                        reg: R15,
+                        offset: 0,
+                    }),
+                )),
+                Add(ToReg(Rax, Imm(1))),
+                Mov(ToReg(
+                    Rbx,
+                    Mem(MemRef {
+                        reg: Rsp,
+                        offset: co.si,
+                    }),
+                )),
+                // Increment heap pointer
+                Add(ToReg(Rbx, Imm(2))),
+                Sal(Rbx, 3),
+                Add(ToMem(
+                    MemRef {
+                        reg: R15,
+                        offset: 0,
+                    },
+                    OReg(Rbx),
+                )),
+                LabelI(index_zero),
+            ]);
+            co.rax_to_target(&mut instrs);
             com.result_type = Some(List);
         }
         Expr::Define(_, _) => panic!("define cannot be compiled"),

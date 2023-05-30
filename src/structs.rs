@@ -41,6 +41,7 @@ pub enum Expr {
     If(Box<Expr>, Box<Expr>, Box<Expr>),
     Loop(Box<Expr>),
     List(Vec<Expr>),
+    SizedList(Box<Expr>, Box<Expr>),
     Break(Box<Expr>),
     Set(String, Box<Expr>),
     SetLst(Box<Expr>, Box<Expr>, Box<Expr>),

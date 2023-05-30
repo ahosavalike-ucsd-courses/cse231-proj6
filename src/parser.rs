@@ -26,8 +26,8 @@ pub fn parse_top_level(s: &Sexp) -> (Vec<Expr>, Expr) {
 pub fn parse_expr(s: &Sexp) -> Expr {
     let keywords = &vec![
         "add1", "sub1", "let", "isnum", "isbool", "if", "loop", "break", "set!", "block", "input",
-        "print", "fun", "define", "nil", "list", "index", "+", "-", "*", "<", ">", ">=", "<=", "=",
-        "==",
+        "print", "fun", "define", "nil", "list", "index", "slist", "+", "-", "*", "<", ">", ">=",
+        "<=", "=", "==",
     ];
     match s {
         // Num
@@ -148,6 +148,10 @@ pub fn parse_expr(s: &Sexp) -> Expr {
                         .collect(),
                     Box::new(parse_expr(e)),
                 )
+            }
+            // Sized list
+            [Sexp::Atom(S(op)), l, r] if op == "slist" => {
+                Expr::SizedList(Box::new(parse_expr(l)), Box::new(parse_expr(r)))
             }
             // Binary Operators
             [Sexp::Atom(S(op)), l, r] => Expr::BinOp(
