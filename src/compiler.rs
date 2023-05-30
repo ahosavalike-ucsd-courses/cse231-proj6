@@ -114,11 +114,7 @@ pub fn compile_func_defns(fns: &Vec<Expr>, com: &mut ContextMut) -> Vec<Instr> {
                 Sub(ToReg(Rsp, Imm(com.depth * 8))),
             ]);
             instrs.extend(compile_expr(body, &co, com));
-            instrs.extend(vec![
-                Add(ToReg(Rsp, Imm(com.depth * 8))),
-                Pop(Rbp),
-                Ret,
-            ]);
+            instrs.extend(vec![Add(ToReg(Rsp, Imm(com.depth * 8))), Pop(Rbp), Ret]);
         }
     }
     return instrs;
@@ -172,10 +168,7 @@ pub fn compile_expr_aligned(
         ),
         com,
     ));
-    instrs.extend(vec![
-        Add(ToReg(Rsp, Imm(com.depth * 8))),
-        Pop(Rbp),
-    ]);
+    instrs.extend(vec![Add(ToReg(Rsp, Imm(com.depth * 8))), Pop(Rbp)]);
     return instrs;
 }
 
@@ -401,7 +394,7 @@ pub fn compile_expr(e: &Expr, co: &Context, com: &mut ContextMut) -> Vec<Instr> 
                             Rbx,
                             Mem(MemRef {
                                 reg: Rax,
-                                offset: 1,  // Length is at offset 1
+                                offset: 1, // Length is at offset 1
                             }),
                         )),
                         JumpI(Jump::G(snek_error.clone())),
@@ -703,7 +696,13 @@ pub fn compile_expr(e: &Expr, co: &Context, com: &mut ContextMut) -> Vec<Instr> 
                 }
             }
             // Save index
-            instrs.push(Mov(ToMem(MemRef { reg: Rsp, offset: co.si+1 }, OReg(Rax))));
+            instrs.push(Mov(ToMem(
+                MemRef {
+                    reg: Rsp,
+                    offset: co.si + 1,
+                },
+                OReg(Rax),
+            )));
             // Compile value
             instrs.extend(compile_expr(val, &co_child.modify_si(co.si + 2), com));
             instrs.extend(vec![
@@ -716,9 +715,21 @@ pub fn compile_expr(e: &Expr, co: &Context, com: &mut ContextMut) -> Vec<Instr> 
                     }),
                 )),
                 // Get index
-                Mov(ToReg(Rdi, Mem(MemRef { reg: Rsp, offset: co.si+1 }))),
+                Mov(ToReg(
+                    Rdi,
+                    Mem(MemRef {
+                        reg: Rsp,
+                        offset: co.si + 1,
+                    }),
+                )),
                 // Save value to stack
-                Mov(ToMem(MemRef { reg: Rsp, offset: co.si+1 }, OReg(Rax))),
+                Mov(ToMem(
+                    MemRef {
+                        reg: Rsp,
+                        offset: co.si + 1,
+                    },
+                    OReg(Rax),
+                )),
                 // Bring index to Rax
                 Mov(ToReg(Rax, OReg(Rdi))),
                 // Remove tag from address
@@ -733,7 +744,7 @@ pub fn compile_expr(e: &Expr, co: &Context, com: &mut ContextMut) -> Vec<Instr> 
                     Rax,
                     Mem(MemRef {
                         reg: Rbx,
-                        offset: 1,  // Length are offset 1
+                        offset: 1, // Length are offset 1
                     }),
                 )),
                 JumpI(Jump::G(snek_error.clone())),
@@ -746,7 +757,13 @@ pub fn compile_expr(e: &Expr, co: &Context, com: &mut ContextMut) -> Vec<Instr> 
                 Sal(Rax, 3),
                 Add(ToReg(Rbx, OReg(Rax))),
                 // Copy value
-                Mov(ToReg(Rax, Mem(MemRef { reg: Rsp, offset: co.si+1 }))),
+                Mov(ToReg(
+                    Rax,
+                    Mem(MemRef {
+                        reg: Rsp,
+                        offset: co.si + 1,
+                    }),
+                )),
                 Mov(ToMem(
                     MemRef {
                         reg: Rbx,
@@ -941,7 +958,7 @@ pub fn compile_expr(e: &Expr, co: &Context, com: &mut ContextMut) -> Vec<Instr> 
                 )),
                 // Check if space exists to allocate
                 Mov(ToReg(Rax, OReg(Rbx))),
-                Add(ToReg(Rax, Imm((es.len() + 2) as i32 * 8))),    // 2 word metadata
+                Add(ToReg(Rax, Imm((es.len() + 2) as i32 * 8))), // 2 word metadata
                 Cmp(ToReg(
                     Rax,
                     Mem(MemRef {
@@ -955,7 +972,6 @@ pub fn compile_expr(e: &Expr, co: &Context, com: &mut ContextMut) -> Vec<Instr> 
                 Mov(ToReg(Rsi, OReg(Rbp))),
                 Mov(ToReg(Rdx, OReg(Rsp))),
                 Call(Label::new(Some("snek_try_gc"))),
-
                 // Continue if success
                 LabelI(alloc_succ),
                 // Get heap head again
