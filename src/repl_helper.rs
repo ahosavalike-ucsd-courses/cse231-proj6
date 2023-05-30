@@ -265,6 +265,15 @@ pub fn add_interface_calls(
         ; jmp rax
         ; ret
     );
+    let snek_gc_lbl = ops.new_dynamic_label();
+    lbls.insert(Label::new(Some("snek_gc")), snek_gc_lbl);
+    dynasm!(ops
+        ; .arch x64
+        ; =>snek_gc_lbl
+        ; mov rax, QWORD snek_gc as _
+        ; jmp rax
+        ; ret
+    );
 }
 
 pub fn parse_input(input: &str) -> (i64, Option<Type>) {

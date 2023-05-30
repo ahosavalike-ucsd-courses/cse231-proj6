@@ -930,6 +930,15 @@ pub fn compile_expr(e: &Expr, co: &Context, com: &mut ContextMut) -> Vec<Instr> 
             }
         }
         Expr::FnCall(name, args) => {
+            if name == "gc" {
+                instrs.extend(vec![
+                    Mov(ToReg(Rdi, OReg(Rbp))),
+                    Mov(ToReg(Rsi, OReg(Rsp))),
+                    Call(Label::new(Some("snek_gc"))),
+                    Mov(ToReg(Rax, Imm(0))),
+                ]);
+                return instrs;
+            }
             let fenv = com
                 .fns
                 .get(name)

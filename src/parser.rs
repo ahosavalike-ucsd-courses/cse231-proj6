@@ -72,7 +72,7 @@ pub fn parse_expr(s: &Sexp) -> Expr {
                         vars.iter()
                             .map(|v| {
                                 if let Sexp::Atom(S(vn)) = v {
-                                    if keywords.contains(&vn.as_str()) {
+                                    if keywords.contains(&vn.as_str()) || vn == "gc" {
                                         panic!("keyword cannot be used")
                                     }
                                     vn.to_string()
