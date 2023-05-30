@@ -21,6 +21,7 @@ pub enum Op2 {
     Plus,
     Minus,
     Times,
+    Divide,
     Equal,
     DeepEqual,
     Greater,
@@ -475,6 +476,7 @@ pub enum Instr {
     Pop(Reg),
     And(MovArgs),
     Mul(Reg, Arg64),
+    Div(Arg64),
     Xor(Reg, Arg64),
     Sar(Reg, i8),
     Sal(Reg, i8),
@@ -500,6 +502,7 @@ impl fmt::Display for Instr {
             Push(r) => write!(f, "push {r}"),
             Pop(r) => write!(f, "pop {r}"),
             Mul(r, a) => write!(f, "imul {r}, {a}"),
+            Div(a) => write!(f, "idiv {a}"),
             Xor(r, a) => write!(f, "xor {r}, {a}"),
             Sar(r, i) => write!(f, "sar {r}, {i}"),
             Sal(r, i) => write!(f, "sal {r}, {i}"),
@@ -646,6 +649,11 @@ impl Instr {
             Mul(r, a) => match a {
                 OReg(or) => dynasm!(ops; .arch x64; imul Rq(r.asm()), Rq(or.asm())),
                 Mem(m) => dynasm!(ops; .arch x64; imul Rq(r.asm()), [Rq(m.reg.asm()) + m.offset*8]),
+                _ => panic!("mul does not support this operand"),
+            },
+            Div(a) => match a {
+                OReg(or) => dynasm!(ops; .arch x64; idiv Rq(or.asm())),
+                Mem(m) => dynasm!(ops; .arch x64; idiv [Rq(m.reg.asm()) + m.offset*8]),
                 _ => panic!("mul does not support this operand"),
             },
             Xor(r, a) => match a {

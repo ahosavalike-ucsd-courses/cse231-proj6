@@ -552,11 +552,13 @@ pub fn compile_expr(e: &Expr, co: &Context, com: &mut ContextMut) -> Vec<Instr> 
                     } {
                         instrs.push(Mov(ToReg(Rdi, Imm(23)))); // invalid argument
                         instrs.push(JumpI(Jump::U(snek_error.clone())));
-                        com.result_type = Some(if let Op2::Plus | Op2::Minus | Op2::Times = op {
-                            Int
-                        } else {
-                            Bool
-                        });
+                        com.result_type = Some(
+                            if let Op2::Plus | Op2::Minus | Op2::Times | Op2::Divide = op {
+                                Int
+                            } else {
+                                Bool
+                            },
+                        );
                         return instrs;
                     }
 
@@ -571,13 +573,23 @@ pub fn compile_expr(e: &Expr, co: &Context, com: &mut ContextMut) -> Vec<Instr> 
                         instrs.push(JumpI(Jump::NZ(snek_error.clone())));
                     }
 
-                    if let Op2::Plus | Op2::Minus | Op2::Times = op {
+                    if let Op2::Plus | Op2::Minus | Op2::Times | Op2::Divide = op {
                         match op {
                             Op2::Plus => instrs.push(Add(ToReg(Rax, OReg(Rbx)))),
                             Op2::Minus => instrs.push(Sub(ToReg(Rax, OReg(Rbx)))),
                             Op2::Times => {
                                 instrs.push(Sar(Rax, 1));
                                 instrs.push(Mul(Rax, OReg(Rbx)));
+                            }
+                            Op2::Divide => {
+                                instrs.extend(vec![
+                                    Cmp(ToReg(Rbx, Imm(0))),
+                                    Mov(ToReg(Rdi, Imm(50))),   // Divide by zero
+                                    JumpI(Jump::E(snek_error.clone())),
+                                    Mov(ToReg(Rdx, Imm(0))),
+                                    Div(OReg(Rbx)),
+                                    Sal(Rax, 1),
+                                ]);
                             }
                             _ => panic!("should not happen"),
                         }
