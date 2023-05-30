@@ -243,9 +243,9 @@ pub fn repl(eval_input: Option<(&Vec<Expr>, &Expr, &str)>, heap_size: Option<usi
 
         // Add top level list
         let keywords = &vec![
-            "add1", "sub1", "let", "isnum", "isbool", "islist", "if", "loop", "break", "set!",
-            "block", "print", "fun", "define", "nil", "list", "index", "slist", "len", "+", "-",
-            "*", "/", "<", ">", ">=", "<=", "=", "==",
+            "add1", "sub1", "let", "isnum", "isbool", "isvec", "if", "loop", "break", "set!",
+            "vec-set!", "block", "input", "print", "fun", "define", "nil", "vec", "vec-get",
+            "make-vec", "vec-len", "+", "-", "*", "/", "<", ">", ">=", "<=", "=", "==",
         ];
         for k in keywords {
             if line.starts_with(k) {

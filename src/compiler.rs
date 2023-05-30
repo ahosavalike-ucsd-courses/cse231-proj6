@@ -463,12 +463,13 @@ pub fn compile_expr(e: &Expr, co: &Context, com: &mut ContextMut) -> Vec<Instr> 
                             return instrs;
                         }
                     }
-                    // 1 <= Index(snek) <= length(int)
+                    // 1 <= Index(snek) <= length(int) after adding 1
                     instrs.extend(vec![
                         // Remove tag from address
                         Sub(ToReg(Rax, Imm(1))),
-                        // Convert index from snek to number
+                        // Convert index from snek to 1 based number
                         Sar(Rbx, 1),
+                        Add(ToReg(Rbx, Imm(1))),
                         // Error code index out of bounds
                         Mov(ToReg(Rdi, Imm(40))),
                         // Test upper bound
@@ -828,9 +829,10 @@ pub fn compile_expr(e: &Expr, co: &Context, com: &mut ContextMut) -> Vec<Instr> 
                 Mov(ToReg(Rax, OReg(Rdi))),
                 // Remove tag from address
                 Sub(ToReg(Rbx, Imm(1))),
-                // Convert index from snek to number
+                // Convert index from snek to 1 based number
                 Sar(Rax, 1),
-                // 1 <= Index(snek) <= length(int) test
+                Add(ToReg(Rax, Imm(1))),
+                // 1 <= Index(snek) <= length(int) test after increment
                 // Error code index out of bounds
                 Mov(ToReg(Rdi, Imm(40))),
                 // Test upper bound
