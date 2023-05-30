@@ -438,7 +438,7 @@ pub fn compile_expr(e: &Expr, co: &Context, com: &mut ContextMut) -> Vec<Instr> 
                         }
                         Some(List) => instrs.extend(vec![
                             Cmp(ToReg(Rax, NIL)),
-                            Mov(ToReg(Rdi, Imm(40))),
+                            Mov(ToReg(Rdi, Imm(25))),
                             JumpI(Jump::Z(snek_error.clone())),
                         ]),
                         _ => {
@@ -762,7 +762,7 @@ pub fn compile_expr(e: &Expr, co: &Context, com: &mut ContextMut) -> Vec<Instr> 
                 }
                 Some(List) => instrs.extend(vec![
                     Cmp(ToReg(Rax, NIL)),
-                    Mov(ToReg(Rdi, Imm(40))),
+                    Mov(ToReg(Rdi, Imm(25))),
                     JumpI(Jump::Z(snek_error.clone())),
                 ]),
                 _ => {
