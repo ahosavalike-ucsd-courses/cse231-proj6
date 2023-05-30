@@ -306,6 +306,45 @@ pub fn compile_expr(e: &Expr, co: &Context, com: &mut ContextMut) -> Vec<Instr> 
                     instrs.push(Mov(ToReg(Rdi, OReg(Rax))));
                     instrs.push(Call(Label::new(Some("snek_print"))));
                 }
+                Op1::Len => {
+                    let nil_len = com.label("nil_len");
+                    instrs.push(Mov(ToReg(Rbx, OReg(Rax))));
+                    match com.result_type {
+                        Some(List) => {
+                            instrs.extend(vec![
+                                Cmp(ToReg(Rax, NIL)),
+                                Mov(ToReg(Rax, Imm(0))),
+                                JumpI(Jump::E(nil_len.clone())),
+                            ]);
+                        }
+                        Some(_) => {
+                            instrs.push(Mov(ToReg(Rdi, Imm(23)))); // invalid argument
+                            instrs.push(JumpI(Jump::NZ(snek_error.clone())));
+                        }
+                        _ => {
+                            instrs.extend(vec![
+                                And(ToReg(Rax, Imm(3))),
+                                Cmp(ToReg(Rax, Imm(1))),
+                                Mov(ToReg(Rdi, Imm(24))), // invalid argument
+                                JumpI(Jump::NZ(snek_error.clone())),
+                            ]);
+                        }
+                    }
+                    instrs.extend(vec![
+                        Sub(ToReg(Rbx, Imm(1))),
+                        // Get length
+                        Mov(ToReg(
+                            Rax,
+                            Mem(MemRef {
+                                reg: Rbx,
+                                offset: 1,
+                            }),
+                        )),
+                        Sal(Rax, 1),
+                        LabelI(nil_len),
+                    ]);
+                    com.result_type = Some(Int);
+                }
             }
             co.rax_to_target(&mut instrs);
         }

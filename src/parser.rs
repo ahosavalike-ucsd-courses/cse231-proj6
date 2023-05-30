@@ -26,7 +26,7 @@ pub fn parse_top_level(s: &Sexp) -> (Vec<Expr>, Expr) {
 pub fn parse_expr(s: &Sexp) -> Expr {
     let keywords = &vec![
         "add1", "sub1", "let", "isnum", "isbool", "if", "loop", "break", "set!", "block", "input",
-        "print", "fun", "define", "nil", "list", "index", "slist", "+", "-", "*", "<", ">", ">=",
+        "print", "fun", "define", "nil", "list", "index", "slist", "len", "+", "-", "*", "<", ">", ">=",
         "<=", "=", "==",
     ];
     match s {
@@ -100,6 +100,7 @@ pub fn parse_expr(s: &Sexp) -> Expr {
                         "isnum" => Op1::IsNum,
                         "isbool" => Op1::IsBool,
                         "print" => Op1::Print,
+                        "len" => Op1::Len,
                         _ => panic!("Invalid"),
                     },
                     Box::new(parse_expr(e)),

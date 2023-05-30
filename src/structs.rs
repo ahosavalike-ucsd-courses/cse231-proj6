@@ -12,6 +12,7 @@ pub enum Op1 {
     IsNum,
     IsBool,
     Print,
+    Len,
 }
 
 #[derive(Clone, Debug)]
