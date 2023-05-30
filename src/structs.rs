@@ -11,6 +11,7 @@ pub enum Op1 {
     Sub1,
     IsNum,
     IsBool,
+    IsList,
     Print,
     Len,
 }
