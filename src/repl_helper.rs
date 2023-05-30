@@ -1,5 +1,6 @@
 use dynasmrt::{dynasm, x64::Assembler, AssemblyOffset, DynamicLabel, DynasmApi, DynasmLabelApi};
-use im::{HashMap, HashSet};
+use im::HashMap;
+use std::collections::HashSet;
 use std::mem;
 
 use crate::compiler::*;
@@ -29,7 +30,7 @@ pub extern "C" fn snek_error_print(errcode: i64) {
             1 => "invalid representation",
             i if i >= 20 && i <= 29 => "invalid argument",
             i if i >= 30 && i <= 39 => "overflow",
-            i if i == 40 => "index out of range",
+            i if i == 40 => "index out of bounds",
             i if i == 50 => "divide by zero",
             _ => "",
         }
@@ -450,10 +451,9 @@ fn snek_str(val: i64, seen: &mut HashSet<i64>) -> String {
     } else if val == NIL_VAL {
         "nil".to_string()
     } else if val & 1 == 1 {
-        if seen.contains(&val) {
-            return "(list <cyclic>)".to_string();
+        if !seen.insert(val) {
+            return "[...]".to_string();
         }
-        seen.insert(val);
         let addr = (val - 1) as *const i64;
         let count = unsafe { *addr.add(1) } as usize;
         let mut v: Vec<i64> = vec![0; count];
@@ -461,16 +461,16 @@ fn snek_str(val: i64, seen: &mut HashSet<i64>) -> String {
             v[i] = unsafe { *addr.add(i + 2) };
         }
         let result = format!(
-            "(list {})",
+            "[{}]",
             v.iter()
                 .map(|x| snek_str(*x, seen))
                 .collect::<Vec<String>>()
-                .join(" ")
+                .join(", ")
         );
         seen.remove(&val);
         return result;
     } else {
-        format!("Unknown value: {}", val)
+        format!("unknown value: {}", val)
     }
 }
 
