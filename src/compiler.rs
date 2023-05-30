@@ -349,13 +349,7 @@ pub fn compile_expr(e: &Expr, co: &Context, com: &mut ContextMut) -> Vec<Instr> 
                     let nil_len = com.label("nil_len");
                     instrs.push(Mov(ToReg(Rbx, OReg(Rax))));
                     match com.result_type {
-                        Some(List) => {
-                            instrs.extend(vec![
-                                Cmp(ToReg(Rax, NIL)),
-                                Mov(ToReg(Rax, Imm(0))),
-                                JumpI(Jump::E(nil_len.clone())),
-                            ]);
-                        }
+                        Some(List) => {}
                         Some(_) => {
                             instrs.push(Mov(ToReg(Rdi, Imm(23)))); // invalid argument
                             instrs.push(JumpI(Jump::NZ(snek_error.clone())));
@@ -370,6 +364,11 @@ pub fn compile_expr(e: &Expr, co: &Context, com: &mut ContextMut) -> Vec<Instr> 
                         }
                     }
                     instrs.extend(vec![
+                        // Nil Check
+                        Cmp(ToReg(Rbx, NIL)),
+                        Mov(ToReg(Rax, Imm(0))),
+                        JumpI(Jump::E(nil_len.clone())),
+                        // Remove tag
                         Sub(ToReg(Rbx, Imm(1))),
                         // Get length
                         Mov(ToReg(
