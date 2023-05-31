@@ -1201,7 +1201,7 @@ pub fn compile_expr(e: &Expr, co: &Context, com: &mut ContextMut) -> Vec<Instr> 
                         offset: co.si,
                     }),
                 )),
-                Mov(ToReg(Rdi, OReg(Rax))),
+                Mov(ToReg(Rdi, OReg(Rax))), // GC arg, need to add metadata length
                 Add(ToReg(Rax, Imm(2))), // Metadata length
                 Sal(Rax, 3),             // * 8
                 Add(ToReg(
@@ -1221,6 +1221,7 @@ pub fn compile_expr(e: &Expr, co: &Context, com: &mut ContextMut) -> Vec<Instr> 
                 Mov(ToReg(Rbx, OReg(Rdi))),
                 JumpI(Jump::LE(alloc_succ.clone())),
                 // Call GC
+                Add(ToReg(Rdi, Imm(2))),    // Add metadata length
                 Mov(ToReg(Rsi, OReg(Rbp))),
                 Mov(ToReg(Rdx, OReg(Rsp))),
                 Call(Label::new(Some("snek_try_gc"))),
