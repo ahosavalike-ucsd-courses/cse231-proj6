@@ -1,6 +1,0 @@
-(fun (point x y) (list x y))
-(fun (addpoints p1 p2) (list (+ (index p1 1) (index p2 1)) (+ (index p1 2) (index p2 2))))
-(addpoints (point input 0) (point (- 0 input) (* 2 input)))
-; (dynamic "invalid argument")
-; ((input 2) (output "(list 0 4)"))
-; ((input -2) (output "(list 0 -4)"))

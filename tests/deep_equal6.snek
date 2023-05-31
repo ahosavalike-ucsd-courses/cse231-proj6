@@ -1,3 +1,0 @@
-(let ((x (list 1 2)) (y (list 1 input))) (block (set! x 1 x) (set! y 1 y) (== x y)))
-; (input 1) (output false)
-; (input 2) (output true)

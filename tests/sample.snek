@@ -1,0 +1,4 @@
+(let ((x (vec 1 2 3)) (y (make-vec 4 4))) (block
+    (vec-set! x 2 y)
+    (vec-set! y 3 x)
+))

@@ -1,0 +1,10 @@
+(fun (retgc i) (+ i (gc)))
+
+(let ((x (vec 1 2 (gc)))) (block
+    (print (retgc (gc)))
+    (vec-set! x (gc) (gc))
+))
+
+; (output 0 "[0, 2, 0]")
+; ((input false) (heap_size 4) (dynamic "out of memory"))
+; ((input false) (heap_size 5) (output 0 "[0, 2, 0]"))

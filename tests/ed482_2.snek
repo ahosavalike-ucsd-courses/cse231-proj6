@@ -1,0 +1,9 @@
+(fun (f x y) (- x y))
+
+(let ((x 10) (y 10))
+    (loop
+        (f (print x) (break (f x (print y))))
+    )
+)
+
+; (output 10 10 0)

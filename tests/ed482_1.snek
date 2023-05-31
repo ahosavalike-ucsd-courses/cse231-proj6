@@ -1,0 +1,86 @@
+(fun (create x)
+    (let ((i 0) (root nil))
+        (loop
+            (if (< i (vec-len x))
+                (block
+                    (set! root (add root (vec-get x i)))
+                    (set! i (add1 i))
+                )
+                (break root)
+            )
+        )
+    )
+)
+
+(fun (add root x)
+    (if (= root nil)
+        (vec x nil nil)
+        (let ((cur (vec-get root 0)))
+            (if (= x cur)
+                root
+                (block
+                    (if (< x cur)
+                        (vec-set! root 1 (add (vec-get root 1) x))
+                        (vec-set! root 2 (add (vec-get root 2) x))
+                    )
+                    root
+                )
+            )
+        )
+    )
+)
+
+(fun (check root x)
+    (if (= root nil)
+        false
+        (let ((cur (vec-get root 0)))
+            (if (= x cur)
+                true
+                (if (< x cur)
+                    (check (vec-get root 1) x)
+                    (check (vec-get root 2) x)
+                )
+            )
+        )
+    )
+)
+
+(block
+    (let ((bst (create (vec))))
+        (block
+            (print bst)
+            (print (check bst 0))
+        )
+    )
+    (let ((bst (create (vec -1 1 -100))))
+        (block
+            (print bst)
+            (print (check bst 1))
+            (print (check bst -100))
+            (print (check bst -1))
+            (print (check bst 100))
+            (print (set! bst (add bst 100)))
+            (print (check bst 100))
+            (print (check bst 0))
+            (set! bst (add bst 0))
+            (set! bst (add bst -1))
+            (set! bst (add bst 100))
+            (print bst)
+            (print (check bst 0))
+            (print (check bst 10))
+        )
+    )
+    (let ((bst (create (vec 1 2 3))))
+        (block
+            (print bst)
+            (set! bst (add bst 4))
+            (set! bst (add bst 5))
+            (print bst)
+        )
+    )
+    0
+)
+
+; (output "nil" false "[-1, [-100, nil, nil], [1, nil, nil]]" true true true false "[-1, [-100, nil, nil], [1, nil, [100, nil, nil]]]" true false "[-1, [-100, nil, nil], [1, [0, nil, nil], [100, nil, nil]]]" true false "[1, nil, [2, nil, [3, nil, nil]]]" "[1, nil, [2, nil, [3, nil, [4, nil, [5, nil, nil]]]]]" 0)
+;; ((input 1) (heap_size 25) (output "nil" false "[-1, [-100, nil, nil], [1, nil, nil]]" true true true false "[-1, [-100, nil, nil], [1, nil, [100, nil, nil]]]" true false "[-1, [-100, nil, nil], [1, [0, nil, nil], [100, nil, nil]]]" true false "[1, nil, [2, nil, [3, nil, nil]]]" "[1, nil, [2, nil, [3, nil, [4, nil, [5, nil, nil]]]]]" 0))
+;; ((input 1) (heap_size 24) (dynamic "out of memory"))

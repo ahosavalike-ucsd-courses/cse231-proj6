@@ -1,3 +1,0 @@
-; both x and y refer to the same list
-(let ((x (list 1 2)) (y x)) (block (set! x 1 x) (set! y 2 y) (== x y)))
-; (output true)

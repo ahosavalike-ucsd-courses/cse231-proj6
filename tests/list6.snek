@@ -1,2 +1,0 @@
-(set! nil 2 4)
-; (dynamic "out of range")

@@ -1,3 +1,0 @@
-(print (list 1 input 3 (print 4) 5))
-; (output 4 "(list 1 false 3 4 5)" "(list 1 false 3 4 5)")
-; ((input 10) (output 4 "(list 1 10 3 4 5)" "(list 1 10 3 4 5)"))
