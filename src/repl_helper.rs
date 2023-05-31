@@ -43,7 +43,6 @@ unsafe extern "C" fn snek_try_gc(count: isize, curr_rbp: *const u64, curr_rsp: *
         eprintln!("out of memory");
         std::process::exit(5)
     }
-    *(HEAP_START.add(1) as *mut u64) = new_heap_ptr as u64;
 }
 
 unsafe fn snek_gc(curr_rbp: *const u64, curr_rsp: *const u64) -> *const u64 {
@@ -172,6 +171,8 @@ unsafe fn compact(heap_ptr: *const u64) -> *const u64 {
         ptr = ptr.add(len);
         r15 = dst.add(len);
     }
+    // Modify the heap pointer metadata
+    *(HEAP_START as *mut u64) = r15 as u64;
     r15
 }
 
