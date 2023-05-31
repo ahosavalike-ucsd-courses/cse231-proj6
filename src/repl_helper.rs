@@ -83,7 +83,7 @@ unsafe fn root_set(
                     if (x as *const u64).offset_from(HEAP_START) < 0
                         || (*HEAP_START as *const u64).offset_from(x as *const u64) < 0
                     {
-                        println!("Ignoring stack value: {x:#x}");
+                        // println!("Ignoring stack value: {x:#x}");
                         stack_ptr = stack_ptr.add(1);
                         continue;
                     }
