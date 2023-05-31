@@ -583,7 +583,7 @@ pub fn compile_expr(e: &Expr, co: &Context, com: &mut ContextMut) -> Vec<Instr> 
                             Op2::Divide => {
                                 instrs.extend(vec![
                                     Cmp(ToReg(Rbx, Imm(0))),
-                                    Mov(ToReg(Rdi, Imm(50))),   // Divide by zero
+                                    Mov(ToReg(Rdi, Imm(50))), // Divide by zero
                                     JumpI(Jump::E(snek_error.clone())),
                                     Mov(ToReg(Rdx, Imm(0))),
                                     Div(OReg(Rbx)),
@@ -933,6 +933,7 @@ pub fn compile_expr(e: &Expr, co: &Context, com: &mut ContextMut) -> Vec<Instr> 
                 instrs.extend(vec![
                     Mov(ToReg(Rdi, OReg(Rbp))),
                     Mov(ToReg(Rsi, OReg(Rsp))),
+                    Mov(ToReg(Rdx, Imm(co.si))),
                     Call(Label::new(Some("snek_gc"))),
                     Mov(co.src_to_target(Imm(0))),
                 ]);
@@ -1019,16 +1020,6 @@ pub fn compile_expr(e: &Expr, co: &Context, com: &mut ContextMut) -> Vec<Instr> 
                         OReg(Rax),
                     )));
                 }
-                // Clean up the stack
-                for i in args.len() as i32..fenv.depth as i32 {
-                    instrs.push(Mov(ToMem(
-                        MemRef {
-                            reg: Rsp,
-                            offset: -(fenv.depth as i32 + 2) + i,
-                        },
-                        Imm(0),
-                    )));
-                }
                 instrs.push(Call(Label::new(Some(&format!("fun_{name}")))));
                 co.rax_to_target(&mut instrs);
             }
@@ -1081,6 +1072,7 @@ pub fn compile_expr(e: &Expr, co: &Context, com: &mut ContextMut) -> Vec<Instr> 
                 Mov(ToReg(Rdi, Imm(es.len() as i32 + 2))),
                 Mov(ToReg(Rsi, OReg(Rbp))),
                 Mov(ToReg(Rdx, OReg(Rsp))),
+                Mov(ToReg(Rcx, Imm(co.si + es.len() as i32))),
                 Call(Label::new(Some("snek_try_gc"))),
                 // Continue if success
                 LabelI(alloc_succ),
@@ -1202,8 +1194,8 @@ pub fn compile_expr(e: &Expr, co: &Context, com: &mut ContextMut) -> Vec<Instr> 
                     }),
                 )),
                 Mov(ToReg(Rdi, OReg(Rax))), // GC arg, need to add metadata length
-                Add(ToReg(Rax, Imm(2))), // Metadata length
-                Sal(Rax, 3),             // * 8
+                Add(ToReg(Rax, Imm(2))),    // Metadata length
+                Sal(Rax, 3),                // * 8
                 Add(ToReg(
                     Rax,
                     Mem(MemRef {
@@ -1221,9 +1213,11 @@ pub fn compile_expr(e: &Expr, co: &Context, com: &mut ContextMut) -> Vec<Instr> 
                 Mov(ToReg(Rbx, OReg(Rdi))),
                 JumpI(Jump::LE(alloc_succ.clone())),
                 // Call GC
-                Add(ToReg(Rdi, Imm(2))),    // Add metadata length
+                Add(ToReg(Rdi, Imm(2))), // Add metadata length
                 Mov(ToReg(Rsi, OReg(Rbp))),
                 Mov(ToReg(Rdx, OReg(Rsp))),
+                // co.si and co.si+1 are used
+                Mov(ToReg(Rcx, Imm(co.si + 2))),
                 Call(Label::new(Some("snek_try_gc"))),
                 // Continue
                 LabelI(alloc_succ),

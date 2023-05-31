@@ -36,19 +36,24 @@ pub extern "C" fn snek_error_print(errcode: i64) {
     );
 }
 
-unsafe extern "C" fn snek_try_gc(count: isize, curr_rbp: *const u64, curr_rsp: *const u64) {
+unsafe extern "C" fn snek_try_gc(
+    count: isize,
+    curr_rbp: *const u64,
+    curr_rsp: *const u64,
+    si: u64,
+) {
     let heap_end = *HEAP_START.add(1) as *const u64;
-    let new_heap_ptr = snek_gc(curr_rbp, curr_rsp);
+    let new_heap_ptr = snek_gc(curr_rbp, curr_rsp, si);
     if heap_end.offset_from(new_heap_ptr) < count {
         eprintln!("out of memory");
         std::process::exit(5)
     }
 }
 
-unsafe fn snek_gc(curr_rbp: *const u64, curr_rsp: *const u64) -> *const u64 {
+unsafe fn snek_gc(curr_rbp: *const u64, curr_rsp: *const u64, si: u64) -> *const u64 {
     let heap_ptr = *HEAP_START as *const u64;
     let stack_base = *HEAP_START.add(2) as *const u64;
-    let stack_refs = root_set(stack_base, curr_rbp, curr_rsp);
+    let stack_refs = root_set(stack_base, curr_rbp, curr_rsp, si);
     // 1. Mark
     for (_, heap_addr) in &stack_refs {
         mark(*heap_addr as *mut u64);
@@ -69,20 +74,23 @@ unsafe fn root_set(
     stack_base: *const u64,
     curr_rbp: *const u64,
     curr_rsp: *const u64,
+    si: u64,
 ) -> Vec<(*const u64, *const u64)> {
     let mut curr_rbp = curr_rbp;
     let mut stack_ptr = curr_rsp;
     let mut set = vec![];
+    let mut first_frame = true;
     while stack_base.offset_from(stack_ptr) > 0 {
-        while curr_rbp.offset_from(stack_ptr) > 1 {
+        while curr_rbp.offset_from(stack_ptr) > 0 {
+            let first_frame_check = !first_frame || (stack_ptr.offset_from(curr_rsp) < si as isize);
             match *stack_ptr {
-                x if x & 3 == 1 && x != 1 => {
-                    // TODO: Hacky fix. Understand why the stack value has the tag but not a correct pointer
+                x if first_frame_check && x & 3 == 1 && x != 1 => {
+                    // !TODO: Hacky fix. Understand why the stack value has the tag but not a correct pointer
+                    // This is due to saving raw lengths in stack. Just continue.
                     // Ex. ./tests/bst_invert.run 10 102
                     if (x as *const u64).offset_from(HEAP_START) < 0
                         || (*HEAP_START as *const u64).offset_from(x as *const u64) < 0
                     {
-                        // println!("Ignoring stack value: {x:#x}");
                         stack_ptr = stack_ptr.add(1);
                         continue;
                     }
@@ -92,6 +100,7 @@ unsafe fn root_set(
             }
             stack_ptr = stack_ptr.add(1);
         }
+        first_frame = false;
         curr_rbp = *stack_ptr as *const u64;
         // Skip rbp and ret ptr
         stack_ptr = stack_ptr.add(2);
