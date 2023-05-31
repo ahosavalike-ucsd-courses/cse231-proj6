@@ -934,8 +934,9 @@ pub fn compile_expr(e: &Expr, co: &Context, com: &mut ContextMut) -> Vec<Instr> 
                     Mov(ToReg(Rdi, OReg(Rbp))),
                     Mov(ToReg(Rsi, OReg(Rsp))),
                     Call(Label::new(Some("snek_gc"))),
-                    Mov(ToReg(Rax, Imm(0))),
+                    Mov(co.src_to_target(Imm(0))),
                 ]);
+                com.result_type = Some(Int);
                 return instrs;
             }
             let fenv = com
