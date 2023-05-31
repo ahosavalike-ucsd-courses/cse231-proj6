@@ -1019,6 +1019,16 @@ pub fn compile_expr(e: &Expr, co: &Context, com: &mut ContextMut) -> Vec<Instr> 
                         OReg(Rax),
                     )));
                 }
+                // Clean up the stack
+                for i in args.len() as i32..fenv.depth as i32 {
+                    instrs.push(Mov(ToMem(
+                        MemRef {
+                            reg: Rsp,
+                            offset: -(fenv.depth as i32 + 2) + i,
+                        },
+                        Imm(0),
+                    )));
+                }
                 instrs.push(Call(Label::new(Some(&format!("fun_{name}")))));
                 co.rax_to_target(&mut instrs);
             }
