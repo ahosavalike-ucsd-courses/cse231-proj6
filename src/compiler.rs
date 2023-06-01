@@ -347,6 +347,7 @@ pub fn compile_expr(e: &Expr, co: &Context, com: &mut ContextMut) -> Vec<Instr> 
                 }
                 Op1::Len => {
                     let nil_len = com.label("nil_len");
+                    com.index_used();
                     instrs.push(Mov(ToReg(Rbx, OReg(Rax))));
                     match com.result_type {
                         Some(List) => {}
