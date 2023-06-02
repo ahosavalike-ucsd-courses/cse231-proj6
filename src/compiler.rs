@@ -49,7 +49,7 @@ fn depth(e: &Expr) -> i32 {
         Expr::Set(_, e) => depth(e),
         Expr::SetLst(lst, idx, val) => depth(lst).max(1 + depth(idx)).max(2 + depth(val)),
         Expr::Define(_, e) => depth(e),
-        Expr::FnDefn(_, v, b) => depth_aligned(b, v.len() as i32),
+        Expr::FnDefn(_, v, b) => depth_aligned(b, v.len() as i32 + 1), // 1 extra for storing co.si
         Expr::FnCall(_, args) => args
             .iter()
             .enumerate()
@@ -95,7 +95,8 @@ pub fn compile_func_defns(fns: &Vec<Expr>, com: &mut ContextMut) -> Vec<Instr> {
             com.depth = com.fns.get_mut(name).unwrap().depth;
             // Separate context for each function definiton
             let mut co = Context::new(None)
-                .modify_si(vars.len() as i32)
+                // 1 + to skip the top word
+                .modify_si(1 + vars.len() as i32)
                 // Function body is tail position
                 .modify_tail(true);
 
@@ -104,8 +105,9 @@ pub fn compile_func_defns(fns: &Vec<Expr>, com: &mut ContextMut) -> Vec<Instr> {
                 if existing.is_some() && !existing.unwrap().defined {
                     panic!("duplicate parameter binding in definition");
                 }
+                // Top word is for co.si, so i+1
                 co.env
-                    .insert(v.to_string(), VarEnv::new(i as i32, None, false));
+                    .insert(v.to_string(), VarEnv::new(i as i32 + 1, None, false));
             }
 
             instrs.push(LabelI(Label::new(Some(&format!("fun_{name}")))));
@@ -128,7 +130,8 @@ pub fn compile_expr_aligned(
     input: Option<Type>,
 ) -> Vec<Instr> {
     // Top level is not a tail position
-    let mut co_ = &Context::new(None).modify_si(1);
+    // Top word in stackframe is for si, next for input
+    let mut co_ = &Context::new(None).modify_si(2);
     if let Some(x) = co {
         co_ = x;
     };
@@ -139,7 +142,7 @@ pub fn compile_expr_aligned(
     }
     let com = com_;
 
-    com.depth = depth_aligned(e, 1); // 1 extra for input
+    com.depth = depth_aligned(e, 2); // 1 extra for input, 1 extra for storing co.si
 
     let mut instrs: Vec<Instr> = vec![
         // Heap's second word saves the initial RSP, used to restore on runtime error
@@ -156,7 +159,7 @@ pub fn compile_expr_aligned(
         Mov(ToMem(
             MemRef {
                 reg: Rsp,
-                offset: 0,
+                offset: 1,
             },
             OReg(Rdi),
         )),
@@ -165,7 +168,7 @@ pub fn compile_expr_aligned(
         e,
         &co.modify_env(
             co.env
-                .update("input".to_string(), VarEnv::new(0, input, false)),
+                .update("input".to_string(), VarEnv::new(1, input, false)),
         ),
         com,
     ));
@@ -934,7 +937,14 @@ pub fn compile_expr(e: &Expr, co: &Context, com: &mut ContextMut) -> Vec<Instr> 
                 instrs.extend(vec![
                     Mov(ToReg(Rdi, OReg(Rbp))),
                     Mov(ToReg(Rsi, OReg(Rsp))),
-                    Mov(ToReg(Rdx, Imm(co.si))),
+                    // Set the top of stack frame to current usage of stack
+                    Mov(ToMem(
+                        MemRef {
+                            reg: Rsp,
+                            offset: 0,
+                        },
+                        Imm(co.si),
+                    )),
                     Call(Label::new(Some("snek_gc"))),
                     Mov(co.src_to_target(Imm(0))),
                 ]);
@@ -972,7 +982,8 @@ pub fn compile_expr(e: &Expr, co: &Context, com: &mut ContextMut) -> Vec<Instr> 
             if co.tail {
                 // Do tail call if co.tail is true
                 // Move result from current function's stack to the current function's arguments
-                let diff = com.depth - fenv.depth;
+                // Diff is to 1st argument pos, not top of stack (off by 1 for co.si storage)
+                let diff = com.depth - fenv.depth + 1;
                 // No need to copy if already at the right place
                 if co.si != diff {
                     // Copy top to bottom or bottom to top depending on diff and co.si
@@ -1016,11 +1027,19 @@ pub fn compile_expr(e: &Expr, co: &Context, com: &mut ContextMut) -> Vec<Instr> 
                     instrs.push(Mov(ToMem(
                         MemRef {
                             reg: Rsp,
-                            offset: -(fenv.depth + 2) + i,
+                            offset: -(fenv.depth + 2) + i + 1, // + 1 because top word is for stack usage
                         },
                         OReg(Rax),
                     )));
                 }
+                // Set the top of stack frame to current usage of stack
+                instrs.push(Mov(ToMem(
+                    MemRef {
+                        reg: Rsp,
+                        offset: 0,
+                    },
+                    Imm(co.si + args.len() as i32),
+                )));
                 instrs.push(Call(Label::new(Some(&format!("fun_{name}")))));
                 co.rax_to_target(&mut instrs);
             }
@@ -1073,7 +1092,14 @@ pub fn compile_expr(e: &Expr, co: &Context, com: &mut ContextMut) -> Vec<Instr> 
                 Mov(ToReg(Rdi, Imm(es.len() as i32 + 2))),
                 Mov(ToReg(Rsi, OReg(Rbp))),
                 Mov(ToReg(Rdx, OReg(Rsp))),
-                Mov(ToReg(Rcx, Imm(co.si + es.len() as i32))),
+                // Set stack usage
+                Mov(ToMem(
+                    MemRef {
+                        reg: Rsp,
+                        offset: 0,
+                    },
+                    Imm(co.si + es.len() as i32),
+                )),
                 Call(Label::new(Some("snek_try_gc"))),
                 // Continue if success
                 LabelI(alloc_succ),
@@ -1218,7 +1244,13 @@ pub fn compile_expr(e: &Expr, co: &Context, com: &mut ContextMut) -> Vec<Instr> 
                 Mov(ToReg(Rsi, OReg(Rbp))),
                 Mov(ToReg(Rdx, OReg(Rsp))),
                 // co.si and co.si+1 are used
-                Mov(ToReg(Rcx, Imm(co.si + 2))),
+                Mov(ToMem(
+                    MemRef {
+                        reg: Rsp,
+                        offset: 0,
+                    },
+                    Imm(co.si + 2),
+                )),
                 Call(Label::new(Some("snek_try_gc"))),
                 // Continue
                 LabelI(alloc_succ),

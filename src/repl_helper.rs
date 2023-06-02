@@ -393,8 +393,8 @@ pub fn asm_repl_func_defn(
     // Compile new Stub
     dynasm!(ops; .arch x64; => stub);
     for (i, arg) in arg_types.iter().enumerate() {
-        // -1 to skip Rbp
-        let i = (i as i32 - f.depth - 1) * 8;
+        // -1 to skip Rbp, + 1 to skip the top word
+        let i = (i as i32 - f.depth) * 8;
         match arg {
             Type::Int => {
                 dynasm!(ops; .arch x64; test [rsp+i], 1; jnz =>slow);
@@ -419,7 +419,8 @@ pub fn asm_repl_func_defn(
         // Compile Slow
         let mut instrs = vec![];
         let mut co = Context::new(None)
-            .modify_si(vars.len() as i32)
+            // 1 + to skip the top word
+            .modify_si(1 + vars.len() as i32)
             // Function body is tail position
             .modify_tail(true);
 
@@ -428,8 +429,9 @@ pub fn asm_repl_func_defn(
             if existing.is_some() && !existing.unwrap().defined {
                 panic!("duplicate parameter binding in definition");
             }
+            // Top word is for co.si, so i+1
             co.env
-                .insert(v.to_string(), VarEnv::new(i as i32, None, false));
+                .insert(v.to_string(), VarEnv::new(i as i32 + 1, None, false));
         }
 
         com.depth = f.depth;
@@ -448,7 +450,8 @@ pub fn asm_repl_func_defn(
 
         // Compile Fast
         let mut co = Context::new(None)
-            .modify_si(vars.len() as i32)
+            // 1 + to skip the top word
+            .modify_si(1 + vars.len() as i32)
             // Function body is tail position
             .modify_tail(true);
 
@@ -459,7 +462,8 @@ pub fn asm_repl_func_defn(
             }
             co.env.insert(
                 v.to_string(),
-                VarEnv::new(i as i32, Some(arg_types[i]), false),
+                // Top word is for co.si, so i+1
+                VarEnv::new(i as i32 + 1, Some(arg_types[i]), false),
             );
         }
 

@@ -80,7 +80,7 @@ extern "C" fn function_compile_runtime(fi: u64, stack: u64) {
     // Go through stack to get the arg types
     let stack = stack as *const i64;
     for i in 0..f.argc {
-        let arg = unsafe { *stack.offset(i as isize) };
+        let arg = unsafe { *stack.offset(i as isize + 1) }; // Ignore the top word of stack
         arg_types.push(if arg == FALSE_VAL || arg == TRUE_VAL {
             Type::Bool
         } else if arg & 1 == 0 {
@@ -142,7 +142,8 @@ pub fn repl(eval_input: Option<(&Vec<Expr>, &Expr, &str)>, heap_size: Option<usi
 
     unsafe { HEAP_START = heap.as_ptr() };
 
-    let mut co = Context::new(Some(define_stack.as_mut_ptr())).modify_si(1);
+    // 1 word for stack usage, 1 word for input
+    let mut co = Context::new(Some(define_stack.as_mut_ptr())).modify_si(2);
 
     let mut input = (FALSE_VAL, Some(Type::Bool));
 
