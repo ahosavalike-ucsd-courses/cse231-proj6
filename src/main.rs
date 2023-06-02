@@ -21,8 +21,6 @@ fn main() -> std::io::Result<()> {
 
     let in_name = if args[1] == "-e" { &args[2] } else { &args[1] };
 
-    let out_name = &args[2];
-
     let mut in_file = File::open(in_name)?;
     let mut in_contents = String::new();
     in_file.read_to_string(&mut in_contents)?;
@@ -40,8 +38,7 @@ fn main() -> std::io::Result<()> {
 
     let com = &mut ContextMut::new();
     let funcs = compile_func_defns(&funcs, com);
-    let co = &Context::new(None).modify_si(1);
-    let result = compile_expr_aligned(&expr, Some(co), Some(com), None);
+    let result = compile_expr_aligned(&expr, None, Some(com), None);
 
     let asm_program = format!(
         "section .text
@@ -67,6 +64,7 @@ ret
         instrs_to_string(&result)
     );
 
+    let out_name = &args[2];
     let mut out_file = File::create(out_name)?;
     out_file.write_all(asm_program.as_bytes())?;
     // repl(Some(&result));
