@@ -4,3 +4,4 @@
 config.txt
 changelog/
 build.rs
+.vscode/
