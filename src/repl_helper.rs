@@ -1,10 +1,10 @@
-use dynasmrt::{dynasm, x64::Assembler, DynamicLabel, DynasmApi, DynasmLabelApi};
-use im::HashMap;
+use dynasmrt::{dynasm, x64::Assembler, AssemblyOffset, DynamicLabel, DynasmApi, DynasmLabelApi};
+use im::{HashMap, HashSet};
+use std::mem;
 
 use crate::compiler::*;
 use crate::repl::{HEAP_META_SIZE, HEAP_START};
 use crate::structs::*;
-use im::HashSet;
 
 pub extern "C" fn snek_error_exit(errcode: i64) {
     // print error message according to writeup
@@ -66,7 +66,6 @@ unsafe fn snek_gc(curr_rbp: *const u64, curr_rsp: *const u64) -> *const u64 {
 
 enum StackIterType {
     ValIter,
-    #[allow(dead_code)]
     RetPtrIter,
     EntryIter,
 }
@@ -93,7 +92,6 @@ impl Stack {
     unsafe fn iter_val(&self) -> StackIter {
         StackIter::new(self, StackIterType::ValIter)
     }
-    #[allow(dead_code)]
     unsafe fn iter_retptr(&self) -> StackIter {
         StackIter::new(self, StackIterType::RetPtrIter)
     }
@@ -159,7 +157,6 @@ impl StackIter {
         Some(val)
     }
 
-    #[allow(dead_code)]
     unsafe fn next_retptr(&mut self) -> Option<(*const u64, u64)> {
         // Ignore the final return pointer to main
         if self.curr_rbp.offset_from(self.stack.rsp_base) >= -1 {
@@ -488,7 +485,14 @@ pub fn asm_repl_func_defn(
     lbls: &mut HashMap<Label, DynamicLabel>,
     f: &FunDefEnv,
     arg_types: &Vec<Type>,
+    rbp: *const u64,
+    rsp: *const u64,
 ) {
+    let old_ptr_start: i64 = {
+        let reader = ops.reader();
+        let buf = reader.lock();
+        unsafe { mem::transmute(buf.ptr(AssemblyOffset(0))) }
+    };
     let stub = ops.new_dynamic_label();
     lbls.insert(Label::new(Some(&format!("fun_{}", f.name))), stub);
     let fast = *lbls
@@ -603,4 +607,36 @@ pub fn asm_repl_func_defn(
         dynasm!(ops; .arch x64; jmp =>stub);
     })
     .unwrap();
+
+    // Fix the call stack if the ops was relocated
+    let new_ptr_start: i64 = {
+        let reader = ops.reader();
+        let buf = reader.lock();
+        unsafe { mem::transmute(buf.ptr(AssemblyOffset(0))) }
+    };
+
+    let diff = new_ptr_start - old_ptr_start;
+    // Closure to fix the return pointers on the stack
+    let fix = |old: *const u64| unsafe {
+        if diff > 0 {
+            *old + diff as u64
+        } else {
+            *old - (-diff) as u64
+        }
+    };
+    if diff != 0 {
+        unsafe {
+            let base = *HEAP_START.add(2) as *const u64;
+
+            // Modify rust function_compile_runtime's return
+            let runtime_ret = rsp.sub(1);
+            *(runtime_ret as *mut u64) = fix(runtime_ret);
+
+            // Modify stack references
+            let stack = Stack::new(rbp, rsp, base);
+            for (ptr, _) in stack.iter_retptr() {
+                *(ptr as *mut u64) = fix(ptr);
+            }
+        }
+    }
 }

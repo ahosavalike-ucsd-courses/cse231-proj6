@@ -63,7 +63,8 @@ fn function_compile_initial(
         ; mov QWORD [rsp], argc
         ; mov rax, QWORD function_compile_runtime as _
         ; mov rdi, QWORD fi as i64
-        ; mov rsi, rsp
+        ; mov rsi, rbp
+        ; mov rdx, rsp
         ; call rax
         ; add rsp, depth * 8
         ; pop rbp
@@ -75,14 +76,14 @@ fn function_compile_initial(
 }
 
 // Compiles the slow and fast versions of the function
-extern "C" fn function_compile_runtime(fi: u64, stack: u64) {
+extern "C" fn function_compile_runtime(fi: u64, rbp: *const u64, rsp: *const u64) {
     let f = FUNCTIONS.lock().unwrap().get(&fi).unwrap().clone();
     let mut arg_types = Vec::with_capacity(f.argc as usize);
 
     // Go through stack to get the arg types
-    let stack = stack as *const i64;
+    let stack = rsp as *const i64;
     for i in 0..f.argc {
-        let arg = unsafe { *stack.offset(i as isize + 1) }; // Ignore the top word of stack
+        let arg = unsafe { *stack.add(i as usize + 1) }; // Ignore the top word of stack
         arg_types.push(if arg == FALSE_VAL || arg == TRUE_VAL {
             Type::Bool
         } else if arg & 1 == 0 {
@@ -101,6 +102,8 @@ extern "C" fn function_compile_runtime(fi: u64, stack: u64) {
         &mut LABELS.lock().unwrap(),
         &f,
         &arg_types,
+        rbp,
+        rsp,
     );
 }
 
