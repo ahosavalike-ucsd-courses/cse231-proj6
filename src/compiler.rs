@@ -30,17 +30,18 @@ fn depth(e: &Expr) -> i32 {
         Expr::Let(bindings, e) => bindings
             .iter()
             .enumerate()
-            .map(|(i, (_, e))| (i as i32 + depth(e)))
+            .map(|(i, (_, e))| i as i32 + depth(e))
             .max()
             .unwrap_or(0)
             .max(bindings.len() as i32 + depth(e)),
         Expr::List(es) => es
             .iter()
             .enumerate()
-            .map(|(i, e)| (i as i32 + depth(e)))
+            .map(|(i, e)| i as i32 + depth(e))
             .max()
             .unwrap_or(0)
             .max(es.len() as i32),
+        Expr::SizedList(c, v) => depth(c).max(depth(v) + 1).max(2),
         Expr::If(cond, then, other) => depth(cond).max(depth(then)).max(depth(other)),
         Expr::Loop(e) => depth(e),
         Expr::Block(es) => es.iter().map(|expr| depth(expr)).max().unwrap_or(0),
@@ -48,15 +49,21 @@ fn depth(e: &Expr) -> i32 {
         Expr::Set(_, e) => depth(e),
         Expr::SetLst(lst, idx, val) => depth(lst).max(1 + depth(idx)).max(2 + depth(val)),
         Expr::Define(_, e) => depth(e),
-        Expr::FnDefn(_, v, b) => depth_aligned(b, v.len() as i32),
-        Expr::FnCall(_, args) => args.len() as i32,
+        Expr::FnDefn(_, v, b) => depth_aligned(b, v.len() as i32 + 1), // 1 extra for storing co.si
+        Expr::FnCall(_, args) => args
+            .iter()
+            .enumerate()
+            .map(|(i, e)| i as i32 + depth(e))
+            .max()
+            .unwrap_or(0)
+            .max(args.len() as i32),
     }
 }
 
 pub fn depth_aligned(e: &Expr, extra: i32) -> i32 {
-    // Off aligned 16byte depth
+    // Aligned 16byte depth
     let d = depth(e) + extra;
-    if d % 2 != 0 {
+    if d % 2 == 0 {
         d
     } else {
         d + 1
@@ -68,13 +75,13 @@ pub fn compile_func_defns(fns: &Vec<Expr>, com: &mut ContextMut) -> Vec<Instr> {
 
     // Preprocess all function definitions
     com.fns.extend(fns.iter().fold(hashmap! {}, |mut acc, f| {
-        if let Expr::FnDefn(n, v, b) = f {
+        if let Expr::FnDefn(n, v, _) = f {
             if acc.get(n).is_some() {
                 panic!("function redefined")
             }
             acc.insert(
                 n.to_string(),
-                FunEnv::new(v.len() as i32, depth_aligned(b, v.len() as i32)),
+                FunEnv::new(v.len() as i32, depth_aligned(f, 0)),
             );
             return acc;
         }
@@ -88,7 +95,8 @@ pub fn compile_func_defns(fns: &Vec<Expr>, com: &mut ContextMut) -> Vec<Instr> {
             com.depth = com.fns.get_mut(name).unwrap().depth;
             // Separate context for each function definiton
             let mut co = Context::new(None)
-                .modify_si(vars.len() as i32)
+                // 1 + to skip the top word
+                .modify_si(1 + vars.len() as i32)
                 // Function body is tail position
                 .modify_tail(true);
 
@@ -97,15 +105,19 @@ pub fn compile_func_defns(fns: &Vec<Expr>, com: &mut ContextMut) -> Vec<Instr> {
                 if existing.is_some() && !existing.unwrap().defined {
                     panic!("duplicate parameter binding in definition");
                 }
+                // Top word is for co.si, so i+1
                 co.env
-                    .insert(v.to_string(), VarEnv::new(i as i32, None, false));
+                    .insert(v.to_string(), VarEnv::new(i as i32 + 1, None, false));
             }
 
             instrs.push(LabelI(Label::new(Some(&format!("fun_{name}")))));
-            instrs.push(Sub(ToReg(Rsp, Imm(com.depth * 8))));
+            instrs.extend(vec![
+                Push(Rbp),
+                Mov(ToReg(Rbp, OReg(Rsp))),
+                Sub(ToReg(Rsp, Imm(com.depth * 8))),
+            ]);
             instrs.extend(compile_expr(body, &co, com));
-            instrs.push(Add(ToReg(Rsp, Imm(com.depth * 8))));
-            instrs.push(Ret);
+            instrs.extend(vec![Add(ToReg(Rsp, Imm(com.depth * 8))), Pop(Rbp), Ret]);
         }
     }
     return instrs;
@@ -118,7 +130,8 @@ pub fn compile_expr_aligned(
     input: Option<Type>,
 ) -> Vec<Instr> {
     // Top level is not a tail position
-    let mut co_ = &Context::new(None).modify_si(1);
+    // Top word in stackframe is for si, next for input
+    let mut co_ = &Context::new(None).modify_si(2);
     if let Some(x) = co {
         co_ = x;
     };
@@ -129,16 +142,24 @@ pub fn compile_expr_aligned(
     }
     let com = com_;
 
-    com.depth = depth_aligned(e, if let Some(_) = input { 3 } else { 2 }); // 1 extra for input
+    com.depth = depth_aligned(e, 2); // 1 extra for input, 1 extra for storing co.si
 
     let mut instrs: Vec<Instr> = vec![
         // Heap's second word saves the initial RSP, used to restore on runtime error
-        Mov(ToMem(MemRef { reg: R15, offset: 1 }, OReg(Rsp))),
+        Push(Rbp),
+        Mov(ToMem(
+            MemRef {
+                reg: R15,
+                offset: 2,
+            },
+            OReg(Rsp),
+        )),
+        Mov(ToReg(Rbp, OReg(Rsp))),
         Sub(ToReg(Rsp, Imm(com.depth * 8))),
         Mov(ToMem(
             MemRef {
                 reg: Rsp,
-                offset: 0,
+                offset: 1,
             },
             OReg(Rdi),
         )),
@@ -147,11 +168,11 @@ pub fn compile_expr_aligned(
         e,
         &co.modify_env(
             co.env
-                .update("input".to_string(), VarEnv::new(0, input, false)),
+                .update("input".to_string(), VarEnv::new(1, input, false)),
         ),
         com,
     ));
-    instrs.push(Add(ToReg(Rsp, Imm(com.depth * 8))));
+    instrs.extend(vec![Add(ToReg(Rsp, Imm(com.depth * 8))), Pop(Rbp)]);
     return instrs;
 }
 
@@ -268,24 +289,103 @@ pub fn compile_expr(e: &Expr, co: &Context, com: &mut ContextMut) -> Vec<Instr> 
                     com.result_type = Some(Int);
                 }
                 Op1::IsBool => {
-                    instrs.push(And(ToReg(Rax, Imm(1))));
-                    instrs.push(Mov(ToReg(Rax, TRUE))); // Set true
-                    instrs.push(Mov(ToReg(Rbx, FALSE)));
-                    instrs.push(CMovI(CMov::Z(Rax, OReg(Rbx)))); // Set false if zero
+                    match com.result_type {
+                        Some(Bool) => {
+                            instrs.push(Mov(ToReg(Rax, TRUE)));
+                        }
+                        Some(_) => {
+                            instrs.push(Mov(ToReg(Rax, FALSE)));
+                        }
+                        None => {
+                            instrs.push(And(ToReg(Rax, Imm(3))));
+                            instrs.push(Cmp(ToReg(Rax, Imm(3))));
+                            instrs.push(Mov(ToReg(Rax, FALSE))); // Set false
+                            instrs.push(Mov(ToReg(Rbx, TRUE)));
+                            instrs.push(CMovI(CMov::E(Rax, OReg(Rbx)))); // Set true if equal
+                        }
+                    }
+
+                    com.result_type = Some(Bool);
+                }
+                Op1::IsList => {
+                    match com.result_type {
+                        Some(List) => {
+                            instrs.push(Mov(ToReg(Rax, TRUE)));
+                        }
+                        Some(_) => {
+                            instrs.push(Mov(ToReg(Rax, FALSE)));
+                        }
+                        None => {
+                            instrs.push(And(ToReg(Rax, Imm(3))));
+                            instrs.push(Cmp(ToReg(Rax, Imm(1))));
+                            instrs.push(Mov(ToReg(Rax, FALSE))); // Set false
+                            instrs.push(Mov(ToReg(Rbx, TRUE)));
+                            instrs.push(CMovI(CMov::E(Rax, OReg(Rbx)))); // Set true if equal
+                        }
+                    }
 
                     com.result_type = Some(Bool);
                 }
                 Op1::IsNum => {
-                    instrs.push(And(ToReg(Rax, Imm(1))));
-                    instrs.push(Mov(ToReg(Rax, FALSE))); // Set false
-                    instrs.push(Mov(ToReg(Rbx, TRUE)));
-                    instrs.push(CMovI(CMov::Z(Rax, OReg(Rbx)))); // Set true if zero
+                    match com.result_type {
+                        Some(Int) => {
+                            instrs.push(Mov(ToReg(Rax, TRUE)));
+                        }
+                        Some(_) => {
+                            instrs.push(Mov(ToReg(Rax, FALSE)));
+                        }
+                        None => {
+                            instrs.push(And(ToReg(Rax, Imm(1))));
+                            instrs.push(Mov(ToReg(Rax, FALSE))); // Set false
+                            instrs.push(Mov(ToReg(Rbx, TRUE)));
+                            instrs.push(CMovI(CMov::Z(Rax, OReg(Rbx)))); // Set true if zero
+                        }
+                    }
 
                     com.result_type = Some(Bool);
                 }
                 Op1::Print => {
                     instrs.push(Mov(ToReg(Rdi, OReg(Rax))));
                     instrs.push(Call(Label::new(Some("snek_print"))));
+                }
+                Op1::Len => {
+                    let nil_len = com.label("nil_len");
+                    com.index_used();
+                    instrs.push(Mov(ToReg(Rbx, OReg(Rax))));
+                    match com.result_type {
+                        Some(List) => {}
+                        Some(_) => {
+                            instrs.push(Mov(ToReg(Rdi, Imm(23)))); // invalid argument
+                            instrs.push(JumpI(Jump::NZ(snek_error.clone())));
+                        }
+                        _ => {
+                            instrs.extend(vec![
+                                And(ToReg(Rax, Imm(3))),
+                                Cmp(ToReg(Rax, Imm(1))),
+                                Mov(ToReg(Rdi, Imm(24))), // invalid argument
+                                JumpI(Jump::NZ(snek_error.clone())),
+                            ]);
+                        }
+                    }
+                    instrs.extend(vec![
+                        // Nil Check
+                        Cmp(ToReg(Rbx, NIL)),
+                        Mov(ToReg(Rax, Imm(0))),
+                        JumpI(Jump::E(nil_len.clone())),
+                        // Remove tag
+                        Sub(ToReg(Rbx, Imm(1))),
+                        // Get length
+                        Mov(ToReg(
+                            Rax,
+                            Mem(MemRef {
+                                reg: Rbx,
+                                offset: 1,
+                            }),
+                        )),
+                        Sal(Rax, 1),
+                        LabelI(nil_len),
+                    ]);
+                    com.result_type = Some(Int);
                 }
             }
             co.rax_to_target(&mut instrs);
@@ -376,14 +476,16 @@ pub fn compile_expr(e: &Expr, co: &Context, com: &mut ContextMut) -> Vec<Instr> 
                             Rbx,
                             Mem(MemRef {
                                 reg: Rax,
-                                offset: 0,
+                                offset: 1, // Length is at offset 1
                             }),
                         )),
                         JumpI(Jump::G(snek_error.clone())),
                         // Test lower bound
                         Cmp(ToReg(Rbx, Imm(0))),
                         JumpI(Jump::LE(snek_error.clone())),
-                        // Add index, multiply 8 = shift 3
+                        // Ignore the length word
+                        Add(ToReg(Rbx, Imm(1))),
+                        // Add offset to Rax, multiply 8 = shift 3
                         Sal(Rbx, 3),
                         Add(ToReg(Rax, OReg(Rbx))),
                         Mov(ToReg(
@@ -453,11 +555,13 @@ pub fn compile_expr(e: &Expr, co: &Context, com: &mut ContextMut) -> Vec<Instr> 
                     } {
                         instrs.push(Mov(ToReg(Rdi, Imm(23)))); // invalid argument
                         instrs.push(JumpI(Jump::U(snek_error.clone())));
-                        com.result_type = Some(if let Op2::Plus | Op2::Minus | Op2::Times = op {
-                            Int
-                        } else {
-                            Bool
-                        });
+                        com.result_type = Some(
+                            if let Op2::Plus | Op2::Minus | Op2::Times | Op2::Divide = op {
+                                Int
+                            } else {
+                                Bool
+                            },
+                        );
                         return instrs;
                     }
 
@@ -472,13 +576,23 @@ pub fn compile_expr(e: &Expr, co: &Context, com: &mut ContextMut) -> Vec<Instr> 
                         instrs.push(JumpI(Jump::NZ(snek_error.clone())));
                     }
 
-                    if let Op2::Plus | Op2::Minus | Op2::Times = op {
+                    if let Op2::Plus | Op2::Minus | Op2::Times | Op2::Divide = op {
                         match op {
                             Op2::Plus => instrs.push(Add(ToReg(Rax, OReg(Rbx)))),
                             Op2::Minus => instrs.push(Sub(ToReg(Rax, OReg(Rbx)))),
                             Op2::Times => {
                                 instrs.push(Sar(Rax, 1));
                                 instrs.push(Mul(Rax, OReg(Rbx)));
+                            }
+                            Op2::Divide => {
+                                instrs.extend(vec![
+                                    Cmp(ToReg(Rbx, Imm(0))),
+                                    Mov(ToReg(Rdi, Imm(50))), // Divide by zero
+                                    JumpI(Jump::E(snek_error.clone())),
+                                    Mov(ToReg(Rdx, Imm(0))),
+                                    Div(OReg(Rbx)),
+                                    Sal(Rax, 1),
+                                ]);
                             }
                             _ => panic!("should not happen"),
                         }
@@ -621,7 +735,7 @@ pub fn compile_expr(e: &Expr, co: &Context, com: &mut ContextMut) -> Vec<Instr> 
             let co = &co.modify_tail(false);
             let co_child = &co.modify_target(None);
 
-            // Compile list
+            // Compile list to Rax
             instrs.extend(compile_expr(lst, co_child, com));
             // Copy to stack
             instrs.push(Mov(ToMem(
@@ -675,8 +789,16 @@ pub fn compile_expr(e: &Expr, co: &Context, com: &mut ContextMut) -> Vec<Instr> 
                     return instrs;
                 }
             }
-
-            // 1 <= Index(snek) <= length(int)
+            // Save index
+            instrs.push(Mov(ToMem(
+                MemRef {
+                    reg: Rsp,
+                    offset: co.si + 1,
+                },
+                OReg(Rax),
+            )));
+            // Compile value
+            instrs.extend(compile_expr(val, &co_child.modify_si(co.si + 2), com));
             instrs.extend(vec![
                 // Get heap address
                 Mov(ToReg(
@@ -686,10 +808,29 @@ pub fn compile_expr(e: &Expr, co: &Context, com: &mut ContextMut) -> Vec<Instr> 
                         offset: co.si,
                     }),
                 )),
+                // Get index
+                Mov(ToReg(
+                    Rdi,
+                    Mem(MemRef {
+                        reg: Rsp,
+                        offset: co.si + 1,
+                    }),
+                )),
+                // Save value to stack
+                Mov(ToMem(
+                    MemRef {
+                        reg: Rsp,
+                        offset: co.si + 1,
+                    },
+                    OReg(Rax),
+                )),
+                // Bring index to Rax
+                Mov(ToReg(Rax, OReg(Rdi))),
                 // Remove tag from address
                 Sub(ToReg(Rbx, Imm(1))),
                 // Convert index from snek to number
                 Sar(Rax, 1),
+                // 1 <= Index(snek) <= length(int) test
                 // Error code index out of bounds
                 Mov(ToReg(Rdi, Imm(40))),
                 // Test upper bound
@@ -697,38 +838,26 @@ pub fn compile_expr(e: &Expr, co: &Context, com: &mut ContextMut) -> Vec<Instr> 
                     Rax,
                     Mem(MemRef {
                         reg: Rbx,
-                        offset: 0,
+                        offset: 1, // Length are offset 1
                     }),
                 )),
                 JumpI(Jump::G(snek_error.clone())),
                 // Test lower bound
                 Cmp(ToReg(Rax, Imm(0))),
                 JumpI(Jump::LE(snek_error.clone())),
-                // Add offset to base address, index multiply 8 = shift 3
+                // Ignore the length word
+                Add(ToReg(Rax, Imm(1))),
+                // Add offset to Rbx, multiply 8 = shift 3
                 Sal(Rax, 3),
                 Add(ToReg(Rbx, OReg(Rax))),
-                // Save this
-                Mov(ToMem(
-                    MemRef {
-                        reg: Rsp,
-                        offset: co.si + 1,
-                    },
-                    OReg(Rbx),
-                )),
-            ]);
-
-            // Compile value
-            instrs.extend(compile_expr(val, &co_child.modify_si(co.si + 2), com));
-            instrs.extend(vec![
-                // Get address
+                // Copy value
                 Mov(ToReg(
-                    Rbx,
+                    Rax,
                     Mem(MemRef {
                         reg: Rsp,
                         offset: co.si + 1,
                     }),
                 )),
-                // Copy value
                 Mov(ToMem(
                     MemRef {
                         reg: Rbx,
@@ -804,6 +933,24 @@ pub fn compile_expr(e: &Expr, co: &Context, com: &mut ContextMut) -> Vec<Instr> 
             }
         }
         Expr::FnCall(name, args) => {
+            if name == "gc" {
+                instrs.extend(vec![
+                    Mov(ToReg(Rdi, OReg(Rbp))),
+                    Mov(ToReg(Rsi, OReg(Rsp))),
+                    // Set the top of stack frame to current usage of stack
+                    Mov(ToMem(
+                        MemRef {
+                            reg: Rsp,
+                            offset: 0,
+                        },
+                        Imm(co.si),
+                    )),
+                    Call(Label::new(Some("snek_gc"))),
+                    Mov(co.src_to_target(Imm(0))),
+                ]);
+                com.result_type = Some(Int);
+                return instrs;
+            }
             let fenv = com
                 .fns
                 .get(name)
@@ -835,7 +982,8 @@ pub fn compile_expr(e: &Expr, co: &Context, com: &mut ContextMut) -> Vec<Instr> 
             if co.tail {
                 // Do tail call if co.tail is true
                 // Move result from current function's stack to the current function's arguments
-                let diff = com.depth - fenv.depth;
+                // Diff is to 1st argument pos, not top of stack (off by 1 for co.si storage)
+                let diff = com.depth - fenv.depth + 1;
                 // No need to copy if already at the right place
                 if co.si != diff {
                     // Copy top to bottom or bottom to top depending on diff and co.si
@@ -863,6 +1011,7 @@ pub fn compile_expr(e: &Expr, co: &Context, com: &mut ContextMut) -> Vec<Instr> 
                 }
                 // Bring RSP to ret ptr
                 instrs.push(Add(ToReg(Rsp, Imm(com.depth * 8))));
+                instrs.push(Pop(Rbp));
                 instrs.push(JumpI(Jump::U(Label::new(Some(&format!("fun_{name}"))))))
                 // Already in tail position, no need to move to target
             } else {
@@ -878,11 +1027,19 @@ pub fn compile_expr(e: &Expr, co: &Context, com: &mut ContextMut) -> Vec<Instr> 
                     instrs.push(Mov(ToMem(
                         MemRef {
                             reg: Rsp,
-                            offset: -(fenv.depth + 1) + i,
+                            offset: -(fenv.depth + 2) + i + 1, // + 1 because top word is for stack usage
                         },
                         OReg(Rax),
                     )));
                 }
+                // Set the top of stack frame to current usage of stack
+                instrs.push(Mov(ToMem(
+                    MemRef {
+                        reg: Rsp,
+                        offset: 0,
+                    },
+                    Imm(co.si + args.len() as i32),
+                )));
                 instrs.push(Call(Label::new(Some(&format!("fun_{name}")))));
                 co.rax_to_target(&mut instrs);
             }
@@ -908,22 +1065,70 @@ pub fn compile_expr(e: &Expr, co: &Context, com: &mut ContextMut) -> Vec<Instr> 
                 ));
             }
 
-            // Get heap head
-            instrs.push(Mov(ToReg(
-                Rbx,
-                Mem(MemRef {
-                    reg: R15,
-                    offset: 0,
-                }),
-            )));
-            // Length as the first value
-            instrs.push(Mov(ToMem(
-                MemRef {
-                    reg: Rbx,
-                    offset: 0,
-                },
-                Imm64(es.len() as i64),
-            )));
+            let alloc_succ = com.label("alloc_succ");
+            com.index_used();
+
+            instrs.extend(vec![
+                // Get heap head
+                Mov(ToReg(
+                    Rbx,
+                    Mem(MemRef {
+                        reg: R15,
+                        offset: 0,
+                    }),
+                )),
+                // Check if space exists to allocate
+                Mov(ToReg(Rax, OReg(Rbx))),
+                Add(ToReg(Rax, Imm((es.len() + 2) as i32 * 8))), // 2 word metadata
+                Cmp(ToReg(
+                    Rax,
+                    Mem(MemRef {
+                        reg: R15,
+                        offset: 1,
+                    }),
+                )),
+                JumpI(Jump::LE(alloc_succ.clone())),
+                // Insufficient mem, Call GC
+                Mov(ToReg(Rdi, Imm(es.len() as i32 + 2))),
+                Mov(ToReg(Rsi, OReg(Rbp))),
+                Mov(ToReg(Rdx, OReg(Rsp))),
+                // Set stack usage
+                Mov(ToMem(
+                    MemRef {
+                        reg: Rsp,
+                        offset: 0,
+                    },
+                    Imm(co.si + es.len() as i32),
+                )),
+                Call(Label::new(Some("snek_try_gc"))),
+                // Continue if success
+                LabelI(alloc_succ),
+                // Get heap head again
+                Mov(ToReg(
+                    Rbx,
+                    Mem(MemRef {
+                        reg: R15,
+                        offset: 0,
+                    }),
+                )),
+                // Clear GC word
+                Mov(ToMem(
+                    MemRef {
+                        reg: Rbx,
+                        offset: 0,
+                    },
+                    Imm(0),
+                )),
+                // Length as the second value
+                Mov(ToMem(
+                    MemRef {
+                        reg: Rbx,
+                        offset: 1,
+                    },
+                    Imm64(es.len() as i64),
+                )),
+            ]);
+
             for i in 0..es.len() as i32 {
                 instrs.push(Mov(ToReg(
                     Rax,
@@ -935,7 +1140,7 @@ pub fn compile_expr(e: &Expr, co: &Context, com: &mut ContextMut) -> Vec<Instr> 
                 instrs.push(Mov(ToMem(
                     MemRef {
                         reg: Rbx,
-                        offset: i + 1, // 1st word is length
+                        offset: i + 2, // 1st two words are metadata
                     },
                     OReg(Rax),
                 )));
@@ -943,14 +1148,185 @@ pub fn compile_expr(e: &Expr, co: &Context, com: &mut ContextMut) -> Vec<Instr> 
             // Set target to address and tag with 1
             instrs.push(Mov(co.src_to_target(OReg(Rbx))));
             instrs.push(Add(co.src_to_target(Imm(1))));
-            // Move heap offset
+            // Move heap offset, two words extra for GC and length
             instrs.push(Add(ToMem(
                 MemRef {
                     reg: R15,
                     offset: 0,
                 },
-                Imm(8 * (1 + es.len() as i32)),
+                Imm(8 * (2 + es.len() as i32)),
             )));
+            com.result_type = Some(List);
+        }
+        Expr::SizedList(c, v) => {
+            // Count
+            instrs.extend(compile_expr(c, &co.modify_target(None), com));
+            // Copy to stack after converting to numeric form
+            instrs.push(Sar(Rax, 1));
+            instrs.push(Mov(ToMem(
+                MemRef {
+                    reg: Rsp,
+                    offset: co.si,
+                },
+                OReg(Rax),
+            )));
+            match com.result_type {
+                Some(Int) => {}
+                Some(_) => {
+                    instrs.push(Mov(ToReg(Rdi, Imm(23)))); // invalid argument
+                    instrs.push(JumpI(Jump::NZ(snek_error.clone())));
+                }
+                _ => {
+                    instrs.push(Test(ToReg(Rax, Imm(1))));
+                    instrs.push(Mov(ToReg(Rdi, Imm(24)))); // invalid argument
+                    instrs.push(JumpI(Jump::NZ(snek_error.clone())));
+                }
+            }
+
+            let index_valid = com.label("index_valid");
+            let index_zero = com.label("index_zero");
+            instrs.extend(vec![
+                Cmp(ToReg(Rax, Imm(0))),
+                Mov(ToReg(Rdi, Imm(40))),
+                JumpI(Jump::G(index_valid.clone())),
+                Mov(ToReg(Rbx, NIL)),
+                CMovI(CMov::E(Rax, OReg(Rbx))),
+                JumpI(Jump::E(index_zero.clone())),
+                Mov(ToReg(Rdi, Imm(40))),
+                JumpI(Jump::U(snek_error.clone())),
+                LabelI(index_valid),
+            ]);
+
+            // Value
+            instrs.extend(compile_expr(
+                v,
+                &co.modify_target(Some(MemRef {
+                    reg: Rsp,
+                    offset: co.si + 1,
+                }))
+                .modify_si(co.si + 1),
+                com,
+            ));
+
+            let alloc_succ = com.label("alloc_succ");
+            let fill_list = com.label("fill_list");
+            com.index_used();
+            instrs.extend(vec![
+                // Check heap availability
+                Mov(ToReg(
+                    Rax,
+                    Mem(MemRef {
+                        reg: Rsp,
+                        offset: co.si,
+                    }),
+                )),
+                Mov(ToReg(Rdi, OReg(Rax))), // GC arg, need to add metadata length
+                Add(ToReg(Rax, Imm(2))),    // Metadata length
+                Sal(Rax, 3),                // * 8
+                Add(ToReg(
+                    Rax,
+                    Mem(MemRef {
+                        reg: R15,
+                        offset: 0,
+                    }),
+                )),
+                Cmp(ToReg(
+                    Rax,
+                    Mem(MemRef {
+                        reg: R15,
+                        offset: 1,
+                    }),
+                )),
+                Mov(ToReg(Rbx, OReg(Rdi))),
+                JumpI(Jump::LE(alloc_succ.clone())),
+                // Call GC
+                Add(ToReg(Rdi, Imm(2))), // Add metadata length
+                Mov(ToReg(Rsi, OReg(Rbp))),
+                Mov(ToReg(Rdx, OReg(Rsp))),
+                // co.si and co.si+1 are used
+                Mov(ToMem(
+                    MemRef {
+                        reg: Rsp,
+                        offset: 0,
+                    },
+                    Imm(co.si + 2),
+                )),
+                Call(Label::new(Some("snek_try_gc"))),
+                // Continue
+                LabelI(alloc_succ),
+                // Rbx has count, Rax has base of heap, Rdi has the value to fill
+                Mov(ToReg(
+                    Rax,
+                    Mem(MemRef {
+                        reg: R15,
+                        offset: 0,
+                    }),
+                )),
+                Mov(ToReg(
+                    Rdi,
+                    Mem(MemRef {
+                        reg: Rsp,
+                        offset: co.si + 1,
+                    }),
+                )),
+                // Clear GC word
+                Mov(ToMem(
+                    MemRef {
+                        reg: Rax,
+                        offset: 0,
+                    },
+                    Imm(0),
+                )),
+                // Set length
+                Mov(ToMem(
+                    MemRef {
+                        reg: Rax,
+                        offset: 1,
+                    },
+                    OReg(Rbx),
+                )),
+                Add(ToReg(Rax, Imm(16))),
+                // Fill list
+                LabelI(fill_list.clone()),
+                Mov(ToMem(
+                    MemRef {
+                        reg: Rax,
+                        offset: 0,
+                    },
+                    OReg(Rdi),
+                )),
+                Add(ToReg(Rax, Imm(8))),
+                Sub(ToReg(Rbx, Imm(1))),
+                JumpI(Jump::NZ(fill_list)),
+                // Tag address to return
+                Mov(ToReg(
+                    Rax,
+                    Mem(MemRef {
+                        reg: R15,
+                        offset: 0,
+                    }),
+                )),
+                Add(ToReg(Rax, Imm(1))),
+                Mov(ToReg(
+                    Rbx,
+                    Mem(MemRef {
+                        reg: Rsp,
+                        offset: co.si,
+                    }),
+                )),
+                // Increment heap pointer
+                Add(ToReg(Rbx, Imm(2))),
+                Sal(Rbx, 3),
+                Add(ToMem(
+                    MemRef {
+                        reg: R15,
+                        offset: 0,
+                    },
+                    OReg(Rbx),
+                )),
+                LabelI(index_zero),
+            ]);
+            co.rax_to_target(&mut instrs);
             com.result_type = Some(List);
         }
         Expr::Define(_, _) => panic!("define cannot be compiled"),
@@ -976,11 +1352,14 @@ pub fn instrs_to_string(instrs: &Vec<Instr>) -> String {
 pub fn instrs_to_asm(
     cmds: &Vec<Instr>,
     ops: &mut dynasmrt::x64::Assembler,
-    lbls: &mut HashMap<Label, DynamicLabel>,
+    lbls: &HashMap<Label, DynamicLabel>,
 ) {
+    let lbls = &mut lbls.clone();
     cmds.iter().for_each(|c| {
         if let LabelI(l) = c {
-            lbls.insert(l.clone(), ops.new_dynamic_label());
+            if lbls.get(&l).is_none() {
+                lbls.insert(l.clone(), ops.new_dynamic_label());
+            }
         }
     });
     cmds.iter().for_each(|c| c.asm(ops, lbls))

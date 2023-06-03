@@ -1,0 +1,89 @@
+; Add value to a bst, creating one if nil
+(fun (add_val root x) (
+    if (= root nil) (
+        ; Create one if nil
+        list nil x nil
+    ) (block
+            ; Add to the right spot
+            (let ((val (index root 2))) (
+                ; If equal, already present, return
+                if (= x val) nil (
+                    if (< x val)
+                        ; Left child update
+                        (set! root 1 (add_val (index root 1) x))
+                        ; Right child update
+                        (set! root 3 (add_val (index root 3) x))
+                )
+            ))
+            ; Return root
+            root
+    )
+))
+
+; Check for value in BST
+(fun (val_in bst x) (
+    if (= bst nil) false (
+        let ((val (index bst 2))) (
+            if (= x val) true (
+                if (< x val)
+                    (val_in (index bst 1) x)
+                    (val_in (index bst 3) x)
+            )
+        )
+    )
+))
+
+(fun (invert bst) (
+    if (= bst nil) nil (
+        let ((left (index bst 1)) (right (index bst 3))) (block
+            (set! bst 1 nil)
+            (set! bst 3 nil)
+            (if (= left nil) (
+                if (= right nil) bst ; both nil
+                (
+                    ; left nil, right not
+                    set! bst 1 (invert right)
+                )
+            ) (
+                if (= right nil) (
+                    ; right nil, left not
+                    set! bst 3 (invert left)
+                ) (block
+                    ; both non nil
+                    (list (invert right) (index bst 2) (invert left))
+                    ; (set! bst 1 (invert right))
+                    ; (set! bst 3 (invert left))
+                )
+            ))
+        )
+    )
+))
+
+; Main body
+(let 
+    ((x -1) (bst nil)) (loop (
+        if (> (set! x (add1 x)) input) (break bst) (
+            set! bst (invert (add_val (add_val bst x) (- 0 x)))
+        )
+    ))
+)
+
+;; Memory Usage
+; input = 0: 5
+; For bst: input -> 2*input+1 elements -> 10*input+5 memory
+;; For inverting bst:
+; Worst case: 20*input+10 store 2 copies of the tree
+; Better case: 10*input+5 + 15 for the leaf invert temporary storage
+; Best case in this layout: 10*input+5 + 5 for temporary storage
+; Skewed trees can be done with no extra storage
+
+; (dynamic "invalid argument")
+; ((input -1) (output "nil"))
+; ((input 0) (heap_size 4) (dynamic "out of memory"))
+; ((input 0) (heap_size 5) (output "(list nil 0 nil)"))
+; ((input 1) (heap_size 19) (dynamic "out of memory"))
+; ((input 1) (heap_size 20) (output "(list (list nil 1 nil) 0 (list nil -1 nil))"))
+; ((input 3) (heap_size 35) (dynamic "out of memory"))
+; ((input 3) (heap_size 40) (output "(list (list (list (list nil 3 nil) -2 nil) 1 nil) 0 (list nil -1 (list nil 2 (list nil -3 nil))))"))
+; ((input 10) (heap_size 109) (dynamic "out of memory"))
+; ((input 10) (heap_size 110) (output "(list (list (list (list (list (list (list (list (list (list (list nil 10 nil) -9 nil) 8 nil) -7 nil) 6 nil) -5 nil) 4 nil) -3 nil) 2 nil) -1 nil) 0 (list nil 1 (list nil -2 (list nil 3 (list nil -4 (list nil 5 (list nil -6 (list nil 7 (list nil -8 (list nil 9 (list nil -10 nil)))))))))))"))

@@ -17,7 +17,7 @@ tests/%.s: tests/%.snek src/main.rs
 tests/%.run: tests/%.s runtime/start.rs
 	nasm -f $(ARCH) tests/$*.s -o tests/$*.o
 	ar rcs tests/lib$*.a tests/$*.o
-	rustc $(TARGET) -L tests/ -lour_code:$* runtime/start.rs -o tests/$*.run
+	rustc $(TARGET) -g -L tests/ -lour_code:$* runtime/start.rs -o tests/$*.run
 
 .PHONY: test
 test:
@@ -27,7 +27,7 @@ test:
 
 .PRECIOUS: tests/%.run tests/%.s
 clean:
-	rm -f tests/*.{a,s,run,o} || exit 0
+	rm -rf tests/*.{a,s,run,o,run.dSYM} || exit 0
 
 .PHONY: % interactive generate
 %: tests/%.run

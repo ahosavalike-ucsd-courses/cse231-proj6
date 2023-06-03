@@ -1,0 +1,3 @@
+(list 0 1 2 3)
+; (output "(list 0 1 2 3)")
+; ((heap_size 5) (dynamic "out of memory"))

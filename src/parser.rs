@@ -25,9 +25,9 @@ pub fn parse_top_level(s: &Sexp) -> (Vec<Expr>, Expr) {
 
 pub fn parse_expr(s: &Sexp) -> Expr {
     let keywords = &vec![
-        "add1", "sub1", "let", "isnum", "isbool", "if", "loop", "break", "set!", "block", "input",
-        "print", "fun", "define", "nil", "list", "index", "+", "-", "*", "<", ">", ">=", "<=", "=",
-        "==",
+        "add1", "sub1", "let", "isnum", "isbool", "islist", "if", "loop", "break", "set!", "block",
+        "input", "print", "fun", "define", "nil", "list", "index", "slist", "len", "+", "-", "*",
+        "/", "<", ">", ">=", "<=", "=", "==",
     ];
     match s {
         // Num
@@ -72,7 +72,7 @@ pub fn parse_expr(s: &Sexp) -> Expr {
                         vars.iter()
                             .map(|v| {
                                 if let Sexp::Atom(S(vn)) = v {
-                                    if keywords.contains(&vn.as_str()) {
+                                    if keywords.contains(&vn.as_str()) || vn == "gc" {
                                         panic!("keyword cannot be used")
                                     }
                                     vn.to_string()
@@ -99,7 +99,9 @@ pub fn parse_expr(s: &Sexp) -> Expr {
                         "sub1" => Op1::Sub1,
                         "isnum" => Op1::IsNum,
                         "isbool" => Op1::IsBool,
+                        "islist" => Op1::IsList,
                         "print" => Op1::Print,
+                        "len" => Op1::Len,
                         _ => panic!("Invalid"),
                     },
                     Box::new(parse_expr(e)),
@@ -149,12 +151,17 @@ pub fn parse_expr(s: &Sexp) -> Expr {
                     Box::new(parse_expr(e)),
                 )
             }
+            // Sized list
+            [Sexp::Atom(S(op)), l, r] if op == "slist" => {
+                Expr::SizedList(Box::new(parse_expr(l)), Box::new(parse_expr(r)))
+            }
             // Binary Operators
             [Sexp::Atom(S(op)), l, r] => Expr::BinOp(
                 match op.as_str() {
                     "+" => Op2::Plus,
                     "-" => Op2::Minus,
                     "*" => Op2::Times,
+                    "/" => Op2::Divide,
                     "=" => Op2::Equal,
                     "==" => Op2::DeepEqual,
                     ">" => Op2::Greater,

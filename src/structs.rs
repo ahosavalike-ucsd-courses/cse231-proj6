@@ -2,7 +2,7 @@ use im::{hashmap, HashMap};
 use std::fmt;
 use std::fmt::Debug;
 
-use dynasmrt::{dynasm, DynamicLabel, DynasmApi, DynasmLabelApi};
+use dynasmrt::{dynasm, DynamicLabel, DynasmApi, DynasmLabelApi, AssemblyOffset};
 
 // Parser
 #[derive(Clone, Debug)]
@@ -11,7 +11,9 @@ pub enum Op1 {
     Sub1,
     IsNum,
     IsBool,
+    IsList,
     Print,
+    Len,
 }
 
 #[derive(Clone, Debug)]
@@ -19,6 +21,7 @@ pub enum Op2 {
     Plus,
     Minus,
     Times,
+    Divide,
     Equal,
     DeepEqual,
     Greater,
@@ -41,6 +44,7 @@ pub enum Expr {
     If(Box<Expr>, Box<Expr>, Box<Expr>),
     Loop(Box<Expr>),
     List(Vec<Expr>),
+    SizedList(Box<Expr>, Box<Expr>),
     Break(Box<Expr>),
     Set(String, Box<Expr>),
     SetLst(Box<Expr>, Box<Expr>, Box<Expr>),
@@ -127,7 +131,6 @@ pub struct ContextMut {
     pub result_type: Option<Type>,
     pub fns: HashMap<String, FunEnv>,
     pub depth: i32,
-    pub curr_heap_ptr: i64,
 }
 
 impl ContextMut {
@@ -138,7 +141,6 @@ impl ContextMut {
             result_type: None,
             fns: hashmap! {},
             depth: 0,
-            curr_heap_ptr: 0,
         }
     }
     pub fn index_used(&mut self) {
@@ -367,6 +369,7 @@ impl CMov {
 pub enum Reg {
     Rax,
     Rcx,
+    Rdx,
     Rbx,
     Rsp,
     Rbp,
@@ -382,6 +385,7 @@ impl fmt::Display for Reg {
         match self {
             Rax => write!(f, "rax"),
             Rcx => write!(f, "rcx"),
+            Rdx => write!(f, "rdx"),
             Rbx => write!(f, "rbx"),
             Rsp => write!(f, "rsp"),
             Rbp => write!(f, "rbp"),
@@ -399,6 +403,7 @@ impl Reg {
         match self {
             Rax => 0,
             Rcx => 1,
+            Rdx => 2,
             Rbx => 3,
             Rsp => 4,
             Rbp => 5,
@@ -471,6 +476,7 @@ pub enum Instr {
     Pop(Reg),
     And(MovArgs),
     Mul(Reg, Arg64),
+    Div(Arg64),
     Xor(Reg, Arg64),
     Sar(Reg, i8),
     Sal(Reg, i8),
@@ -496,6 +502,7 @@ impl fmt::Display for Instr {
             Push(r) => write!(f, "push {r}"),
             Pop(r) => write!(f, "pop {r}"),
             Mul(r, a) => write!(f, "imul {r}, {a}"),
+            Div(a) => write!(f, "idiv {a}"),
             Xor(r, a) => write!(f, "xor {r}, {a}"),
             Sar(r, i) => write!(f, "sar {r}, {i}"),
             Sal(r, i) => write!(f, "sal {r}, {i}"),
@@ -644,6 +651,11 @@ impl Instr {
                 Mem(m) => dynasm!(ops; .arch x64; imul Rq(r.asm()), [Rq(m.reg.asm()) + m.offset*8]),
                 _ => panic!("mul does not support this operand"),
             },
+            Div(a) => match a {
+                OReg(or) => dynasm!(ops; .arch x64; idiv Rq(or.asm())),
+                Mem(m) => dynasm!(ops; .arch x64; idiv [Rq(m.reg.asm()) + m.offset*8]),
+                _ => panic!("mul does not support this operand"),
+            },
             Xor(r, a) => match a {
                 OReg(or) => dynasm!(ops; .arch x64; xor Rq(r.asm()), Rq(or.asm())),
                 Mem(m) => dynasm!(ops; .arch x64; xor Rq(r.asm()), [Rq(m.reg.asm()) + m.offset*8]),
@@ -664,6 +676,33 @@ impl Instr {
 
 pub enum CompileResponse {
     Define(String, Vec<Instr>, Option<Type>),
-    FnDefn(String, Vec<String>, i32, Vec<Instr>),
+    FnDefn(String, Expr, i32), // name, defn, argc
     Expr(Vec<Instr>),
+}
+
+#[derive(Clone, Debug)]
+pub struct FunDefEnv {
+    pub name: String,
+    pub orig: AssemblyOffset,
+    pub defn: Expr,
+    pub depth: i32,
+    pub argc: i32,
+}
+
+impl FunDefEnv {
+    pub fn new(
+        name: String,
+        orig: AssemblyOffset,
+        defn: Expr,
+        depth: i32,
+        argc: i32,
+    ) -> FunDefEnv {
+        FunDefEnv {
+            name,
+            orig,
+            defn,
+            depth,
+            argc,
+        }
+    }
 }

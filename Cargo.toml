@@ -12,6 +12,7 @@ sexp = "1.1.4"
 dynasm = "2.0.0"
 dynasmrt = "2.0.0"
 unwind_safe = "0.1.0"
+once_cell = "1.17.1"
 
 [dev-dependencies]
 prettydiff = "0.6.4"
