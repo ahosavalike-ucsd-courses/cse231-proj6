@@ -58,7 +58,9 @@ fn function_compile_initial(
         ; .arch x64
         ; => stub
         ; push rbp
+        ; mov rbp, rsp
         ; sub rsp, depth * 8
+        ; mov QWORD [rsp], argc
         ; mov rax, QWORD function_compile_runtime as _
         ; mov rdi, QWORD fi as i64
         ; mov rsi, rsp
