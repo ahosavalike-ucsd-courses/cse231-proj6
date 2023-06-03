@@ -187,15 +187,6 @@ impl Stack {
     }
 }
 
-// impl IntoIterator for Stack {
-//     type Item = u64;
-//     type IntoIter = dyn Iterator<Item = Self::Item>;
-
-//     fn into_iter(self) -> Self::IntoIter {
-//         unsafe { self.iter_val() }
-//     }
-// }
-
 struct StackIter {
     stack: Stack,
 
