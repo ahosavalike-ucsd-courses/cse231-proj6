@@ -152,41 +152,157 @@ pub unsafe fn snek_gc(curr_rbp: *const u64, curr_rsp: *const u64) -> *const u64 
     compact(heap_ptr)
 }
 
+enum StackIterType {
+    ValIter,
+    #[allow(dead_code)]
+    RetPtrIter,
+    EntryIter,
+}
+
+#[derive(Clone)]
+struct Stack {
+    init_rbp: *const u64,
+    rsp_top: *const u64,
+    rsp_base: *const u64,
+}
+
+impl Stack {
+    unsafe fn new(init_rbp: *const u64, rsp_top: *const u64, rsp_base: *const u64) -> Stack {
+        Stack {
+            init_rbp,
+            rsp_top,
+            rsp_base,
+        }
+    }
+
+    unsafe fn iter(&self) -> StackIter {
+        StackIter::new(self, StackIterType::EntryIter)
+    }
+    unsafe fn iter_val(&self) -> StackIter {
+        StackIter::new(self, StackIterType::ValIter)
+    }
+    #[allow(dead_code)]
+    unsafe fn iter_retptr(&self) -> StackIter {
+        StackIter::new(self, StackIterType::RetPtrIter)
+    }
+}
+
+// impl IntoIterator for Stack {
+//     type Item = u64;
+//     type IntoIter = dyn Iterator<Item = Self::Item>;
+
+//     fn into_iter(self) -> Self::IntoIter {
+//         unsafe { self.iter_val() }
+//     }
+// }
+
+struct StackIter {
+    stack: Stack,
+
+    curr_rbp: *const u64,
+    stack_ptr: *const u64,
+    curr_rsp: *const u64,
+    si: u64,
+    iter_type: StackIterType,
+}
+
+impl StackIter {
+    unsafe fn new(stack: &Stack, iter_type: StackIterType) -> StackIter {
+        StackIter {
+            stack: stack.clone(),
+
+            curr_rbp: stack.init_rbp,
+            stack_ptr: stack
+                .rsp_top
+                .add(if let StackIterType::ValIter = iter_type {
+                    1
+                } else {
+                    0
+                }),
+            curr_rsp: stack.rsp_top,
+            si: *stack.rsp_top,
+            iter_type,
+        }
+    }
+
+    unsafe fn next_val(&mut self) -> Option<(*const u64, u64)> {
+        if self.stack_ptr.offset_from(self.curr_rsp) >= self.si as isize
+        // || self.stack_ptr.offset_from(self.curr_rbp) <= 0
+        {
+            // Skip rbp and ret ptr
+            self.curr_rsp = self.curr_rbp.add(2);
+            // Skip si
+            self.stack_ptr = self.curr_rbp.add(3);
+            self.curr_rbp = *self.curr_rbp as *const u64;
+
+            // Consume si
+            self.si = *self.stack_ptr;
+        }
+
+        if self.stack.rsp_base.offset_from(self.stack_ptr) <= 0 {
+            return None;
+        }
+
+        let val = (self.stack_ptr, *self.stack_ptr);
+        self.stack_ptr = self.stack_ptr.add(1);
+        Some(val)
+    }
+
+    #[allow(dead_code)]
+    unsafe fn next_retptr(&mut self) -> Option<(*const u64, u64)> {
+        // Ignore the final return pointer to main
+        if self.curr_rbp.offset_from(self.stack.rsp_base) >= -1 {
+            None
+        } else {
+            let ret_ptr = self.curr_rbp.add(1);
+            let val = (ret_ptr, *ret_ptr);
+            self.curr_rbp = *self.curr_rbp as *const u64;
+            Some(val)
+        }
+    }
+
+    unsafe fn next_entry(&mut self) -> Option<(*const u64, u64)> {
+        if self.stack_ptr.offset_from(self.stack.rsp_base) > 0 {
+            None
+        } else {
+            let val = (self.stack_ptr, *self.stack_ptr);
+            self.stack_ptr = self.stack_ptr.add(1);
+            Some(val)
+        }
+    }
+}
+
+impl Iterator for StackIter {
+    type Item = (*const u64, u64);
+
+    fn next(&mut self) -> Option<Self::Item> {
+        unsafe {
+            match self.iter_type {
+                StackIterType::ValIter => self.next_val(),
+                StackIterType::RetPtrIter => self.next_retptr(),
+                StackIterType::EntryIter => self.next_entry(),
+            }
+        }
+    }
+}
+
 // This function traverses the stack frames to gather the root set
 unsafe fn root_set(
     stack_base: *const u64,
     curr_rbp: *const u64,
     curr_rsp: *const u64,
 ) -> Vec<(*const u64, *const u64)> {
-    let mut curr_rbp = curr_rbp;
-    let mut curr_rsp = curr_rsp;
-    let mut stack_ptr = curr_rsp;
     let mut set = vec![];
-    while stack_base.offset_from(stack_ptr) > 0 {
-        let si = *curr_rsp as isize;
-        while stack_ptr.offset_from(curr_rsp) < si {
-            // curr_rbp.offset_from(stack_ptr) > 0 {
-            match *stack_ptr {
-                x if x & 3 == 1 && x != 1 => {
-                    // !TODO: Hacky fix. Understand why the stack value has the tag but not a correct pointer
-                    // This is due to saving raw lengths in stack. Just continue.
-                    // Ex. ./tests/bst_invert.run 10 102
-                    if (x as *const u64).offset_from(HEAP_START) < 0
-                        || (*HEAP_START as *const u64).offset_from(x as *const u64) < 0
-                    {
-                        stack_ptr = stack_ptr.add(1);
-                        continue;
-                    }
-                    set.push((stack_ptr, (x - 1) as *const u64));
-                }
-                _ => (),
+    let stack = Stack::new(curr_rbp, curr_rsp, stack_base);
+    let upper = *HEAP_START as *const u64;
+    for (stack_ptr, val) in stack.iter_val() {
+        if val & 3 == 1 && val != 1 {
+            let ptr = val as *const u64;
+
+            if ptr.offset_from(HEAP_START) > 0 && upper.offset_from(ptr) > 0 {
+                set.push((stack_ptr, (val - 1) as *const u64));
             }
-            stack_ptr = stack_ptr.add(1);
         }
-        // Skip rbp and ret ptr
-        stack_ptr = curr_rbp.add(2);
-        curr_rsp = stack_ptr;
-        curr_rbp = *curr_rbp as *const u64;
     }
     set
 }
@@ -300,12 +416,10 @@ unsafe fn print_heap(heap_ptr: Option<*const u64>) {
 #[export_name = "\x01snek_print_stack"]
 pub unsafe fn snek_print_stack(curr_rsp: *const u64) {
     let stack_base = *HEAP_START.add(2) as *const u64;
-    let mut ptr = curr_rsp;
+    let stack = Stack::new(curr_rsp, curr_rsp, stack_base);
     println!("-----------------------------------------");
-    while ptr <= stack_base {
-        let val = *ptr;
-        println!("{ptr:?}: {:#0x}", val);
-        ptr = ptr.add(1);
+    for (ptr, val) in stack.iter() {
+        println!("{ptr:?}: {val:#0x}");
     }
     println!("-----------------------------------------");
 }
