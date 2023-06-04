@@ -878,15 +878,12 @@ pub fn compile_expr(e: &Expr, co: &Context, com: &mut ContextMut) -> Vec<Instr> 
             com.result_type = Some(List);
         }
         Expr::Block(es) => {
-            let block_com = &mut com.clone();
-            // All variables go to mutable env
-            for (k, v) in co.env.iter() {
-                block_com.env.insert(k.clone(), v.clone());
+            let mut co = co.clone();
+            for (_,v) in co.env.iter_mut() {
+                v.vtype = None;
             }
-
             // Only last expression in the block can be a tail position
-            let block_co = &co.modify_env(hashmap! {});
-            let block_co_rax = &block_co.modify_target(None).modify_tail(false);
+            let co_rax = &co.modify_target(None).modify_tail(false);
 
             // Only last instruction needs to be put into target
             for (i, e) in es.into_iter().enumerate() {
@@ -894,16 +891,13 @@ pub fn compile_expr(e: &Expr, co: &Context, com: &mut ContextMut) -> Vec<Instr> 
                     e,
                     if i + 1 == es.len() {
                         // Last expression
-                        block_co
+                        &co
                     } else {
-                        block_co_rax
+                        co_rax
                     },
-                    block_com,
+                    com,
                 ));
             }
-
-            // Copy mut env vars and other stuff back
-            com.update_from(&block_com);
         }
         Expr::Loop(e) => {
             // Begin and end label have same label index

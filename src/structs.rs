@@ -155,13 +155,6 @@ impl ContextMut {
             index: self.label_index,
         }
     }
-    pub fn update_from(&mut self, other: &ContextMut) {
-        for (k, v) in other.env.iter() {
-            self.env.insert(k.clone(), v.clone());
-        }
-        self.result_type = other.result_type;
-        self.label_index = other.label_index;
-    }
 }
 
 #[derive(Clone, Debug)]
