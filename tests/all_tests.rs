@@ -175,6 +175,11 @@ success_tests! {
 		expected: "false",
 	},
 	{
+		name: student_block_mutable_typecheck_7,
+		file: "student_block_mutable_typecheck.snek",
+		expected: "3\n3",
+	},
+	{
 		name: nested_arith0_1,
 		file: "nested_arith0.snek",
 		expected: "35",
@@ -440,6 +445,11 @@ success_tests! {
 		file: "factr.snek",
 		input: "10",
 		expected: "10\n9\n8\n7\n6\n5\n4\n3\n2\n1\n1\n2\n6\n24\n120\n720\n5040\n40320\n362880\n3628800",
+	},
+	{
+		name: student_block_mutable_typedivergence_7,
+		file: "student_block_mutable_typedivergence.snek",
+		expected: "4",
 	},
 	{
 		name: shadowed_binding_succ4_1,

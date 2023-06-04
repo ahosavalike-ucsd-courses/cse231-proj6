@@ -1,0 +1,8 @@
+; Chirag
+
+(let ((i 3)) (block
+    (if true (set! i 3) (set! i false))
+    (+ i 1)
+))
+
+; (output 4)
