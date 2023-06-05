@@ -47,7 +47,7 @@ unsafe extern "C" fn snek_write_barrier(major_heap_addr: *const u64, val: u64) -
     val
 }
 
-unsafe extern "C" fn snek_try_gc(count: isize, curr_rbp: *const u64, curr_rsp: *const u64, minor: u64) {
+unsafe extern "C" fn snek_try_gc(count: isize, curr_rbp: *const u64, curr_rsp: *const u64, minor: u64) -> *const u64 {
     if minor == 0 {
         // Need to allocate in major heap
         snek_major_gc(curr_rbp, curr_rsp);
@@ -57,9 +57,11 @@ unsafe extern "C" fn snek_try_gc(count: isize, curr_rbp: *const u64, curr_rsp: *
             eprintln!("out of memory");
             std::process::exit(5)
         }
+        *HEAP_START.add(3) as *const u64
     } else {
         // Need to allocate in minor heap
         snek_minor_gc(curr_rbp, curr_rsp);
+        *HEAP_START as *const u64
     }
 }
 
@@ -72,11 +74,16 @@ unsafe fn snek_minor_major_copy_gc(
     curr_rsp: *const u64,
     minor_stack_refs: Option<Vec<(*const u64, *const u64)>>,
 ) {
-    let minor_stack_refs = if minor_stack_refs.is_some() {
+    let mut minor_stack_refs = if minor_stack_refs.is_some() {
         minor_stack_refs.unwrap()
     } else {
         root_set(*HEAP_START.add(2) as *const u64, curr_rbp, curr_rsp).1
     };
+
+    // Track references from REMEMBERED set just like stack references
+    for major_heap_ptr in &*REMEMBERED_SET {
+        minor_stack_refs.push((*major_heap_ptr, (**major_heap_ptr - 1) as *const u64));
+    }
 
     let minor_usage = minor_stack_refs.iter().map(|(_, hp)| **hp + 2).sum::<u64>() as isize;
     let major_free_space =
@@ -113,15 +120,11 @@ unsafe fn snek_minor_major_copy_gc(
         // Update stack refs
         for (minor_ptr, stack_ptrs) in mapper {
             for stack_ptr in stack_ptrs {
-                *(stack_ptr as *mut u64) = *minor_ptr as u64;
+                // Tag the address
+                *(stack_ptr as *mut u64) = *minor_ptr as u64 + 1;
             }
         }
 
-        // Update and free remembered set
-        for major_heap_entry in &*REMEMBERED_SET {
-            let minor_heap_ptr = **major_heap_entry as *const u64;
-            *(*major_heap_entry as *mut u64) = *minor_heap_ptr as u64;
-        }
         (*REMEMBERED_SET).clear();
     }
 }
@@ -304,6 +307,7 @@ unsafe fn root_set(
             }
         }
     }
+    // TODO: Check for live data referred by elements in the nursery
     // TODO: Also check define_stack
     (major_set, minor_set)
 }
@@ -395,28 +399,38 @@ unsafe fn compact(heap_ptr: *const u64) {
 }
 
 #[allow(dead_code)]
-unsafe fn print_heap(heap_ptr: Option<*const u64>) {
-    let heap_ptr = if heap_ptr.is_some() {
-        heap_ptr.unwrap()
-    } else {
-        *HEAP_START as *const u64
-    };
-    println!("Heap: ");
-    let mut ptr = HEAP_START;
-    println!("{ptr:p}: {:#x} {:#x} {:#x}", *ptr, *ptr.add(1), *ptr.add(2));
-
-    ptr = ptr.add(3);
-    let mut next = ptr.add(*ptr.add(1) as usize + 2);
-    print!("{ptr:p}: ");
-    while heap_ptr.offset_from(ptr) > 0 {
-        print!("{:#x} ", *ptr);
-        ptr = ptr.add(1);
-
-        if next.offset_from(ptr) <= 0 {
-            println!("");
-            next = ptr.add(*ptr.add(1) as usize + 2);
-            print!("{ptr:p}: ");
+unsafe fn print_heap() {
+    let major_lower = *HEAP_START.add(1) as *const u64;
+    let major_upper = *HEAP_START.add(3) as *const u64;
+    let minor_lower = HEAP_START.add(HEAP_META_SIZE);
+    let minor_upper = *HEAP_START as *const u64;
+    println!("Heap Metadata: ");
+    print!("{:p}: ", HEAP_START);
+    for i in 0..HEAP_META_SIZE {
+        print!("{:#x}  ", *HEAP_START.add(i));
+    }
+    println!("");
+    println!("Nursery:");
+    let mut ptr = minor_lower;
+    while minor_upper.offset_from(ptr) > 0 {
+        let len = *ptr.add(1) as usize + 2;
+        print!("{:p}: ", ptr);
+        for i in 0..len {
+            print!("{:#x}  ", *ptr.add(i));
         }
+        println!("");
+        ptr = ptr.add(len);
+    }
+    println!("Major heap:");
+    let mut ptr = major_lower;
+    while major_upper.offset_from(ptr) > 0 {
+        let len = *ptr.add(1) as usize + 2;
+        print!("{:p}: ", ptr);
+        for i in 0..len {
+            print!("{:#x}  ", *ptr.add(i));
+        }
+        println!("");
+        ptr = ptr.add(len);
     }
     println!("End heap");
 }
