@@ -815,6 +815,7 @@ pub fn compile_expr(e: &Expr, co: &Context, com: &mut ContextMut) -> Vec<Instr> 
             )));
             // Compile value
             instrs.extend(compile_expr(val, &co_child.modify_si(co.si + 2), com));
+            let val_type = com.result_type;
             instrs.extend(vec![
                 // Get heap address
                 Mov(ToReg(
@@ -875,22 +876,47 @@ pub fn compile_expr(e: &Expr, co: &Context, com: &mut ContextMut) -> Vec<Instr> 
                         offset: co.si + 1,
                     }),
                 )),
-                Mov(ToMem(
-                    MemRef {
-                        reg: Rbx,
-                        offset: 0,
-                    },
-                    OReg(Rax),
-                )),
-                // Set result
-                Mov(ToReg(
-                    Rax,
-                    Mem(MemRef {
-                        reg: Rsp,
-                        offset: co.si,
-                    }),
-                )),
             ]);
+
+            // Call write barrier if value is a list
+            // Only needed if lst is in major heap
+            if let None | Some(List) = val_type {
+                let write_barrier_lbl = com.label("write_barrier");
+                com.index_used();
+                instrs.extend(vec![
+                    // Check if Rbx is within major heap
+                    // Cmp to start of major heap, cannot be greater than the end of major heap
+                    Cmp(ToReg(
+                        Rbx,
+                        Mem(MemRef {
+                            reg: R15,
+                            offset: 1,
+                        }),
+                    )),
+                    JumpI(Jump::L(write_barrier_lbl.clone())),
+                    Mov(ToReg(Rdi, OReg(Rbx))),
+                    Mov(ToReg(Rsi, OReg(Rax))),
+                    Call(Label::new(Some("snek_write_barrier"))),
+                    LabelI(write_barrier_lbl),
+                ]);
+            }
+            // Set the value, Rbx is callee saved
+            instrs.push(Mov(ToMem(
+                MemRef {
+                    reg: Rbx,
+                    offset: 0,
+                },
+                OReg(Rax),
+            )));
+            // Set result
+            instrs.push(Mov(ToReg(
+                Rax,
+                Mem(MemRef {
+                    reg: Rsp,
+                    offset: co.si,
+                }),
+            )));
+
             co.rax_to_target(&mut instrs);
             com.result_type = Some(List);
         }
