@@ -3,7 +3,7 @@ use std::env;
 
 static mut HEAP_START: *const u64 = std::ptr::null();
 static mut REMEMBERED_SET: *mut HashSet<*const u64> = std::ptr::null::<HashSet<*const u64>>() as *mut _;
-static HEAP_META_SIZE: usize = 5;
+static HEAP_META_SIZE: usize = 6;
 
 const TRUE_VAL: i64 = 7;
 const FALSE_VAL: i64 = 3;
@@ -547,6 +547,8 @@ fn main() {
     heap[3] = heap[1];
     // Main GC end of heap
     heap[4] = unsafe { heap.as_mut_ptr().add(heap_len) } as u64;
+    // Length of nursery
+    heap[5] = nursery_size as u64;
 
     unsafe { 
         HEAP_START = heap.as_ptr(); 
