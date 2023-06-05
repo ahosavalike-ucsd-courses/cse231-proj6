@@ -19,7 +19,7 @@ static FUNCTIONS: Lazy<Mutex<HashMap<u64, FunDefEnv>>> = Lazy::new(|| Mutex::new
 static LABELS: Lazy<Mutex<HashMap<Label, DynamicLabel>>> = Lazy::new(|| Mutex::new(hashmap! {}));
 static FUNCTION_INDEX: Mutex<u64> = Mutex::new(0);
 pub static mut HEAP_START: *const u64 = std::ptr::null();
-pub static HEAP_META_SIZE: usize = 5;
+pub static HEAP_META_SIZE: usize = 6;
 pub static mut REMEMBERED_SET: *mut std::collections::HashSet<*const u64> =
     std::ptr::null::<std::collections::HashSet<*const u64>>() as *mut _;
 
@@ -151,6 +151,8 @@ pub fn repl(eval_input: Option<(&Vec<Expr>, &Expr, &str)>, heap_size: Option<usi
     heap[3] = heap[1];
     // Main GC end of heap
     heap[4] = unsafe { heap.as_mut_ptr().add(heap_len) } as u64;
+    // Length of nursery
+    heap[5] = nursery_size as u64;
 
 
     unsafe {
