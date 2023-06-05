@@ -304,6 +304,7 @@ unsafe fn root_set(
             }
         }
     }
+    // TODO: Also check define_stack
     (major_set, minor_set)
 }
 
