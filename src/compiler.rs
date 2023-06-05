@@ -881,7 +881,7 @@ pub fn compile_expr(e: &Expr, co: &Context, com: &mut ContextMut) -> Vec<Instr> 
             // Call write barrier if value is a list
             // Only needed if lst is in major heap
             if let None | Some(List) = val_type {
-                let write_barrier_lbl = com.label("write_barrier");
+                let write_barrier_pass_lbl = com.label("write_barrier_pass");
                 com.index_used();
                 instrs.extend(vec![
                     // Check if Rbx is within major heap
@@ -893,11 +893,11 @@ pub fn compile_expr(e: &Expr, co: &Context, com: &mut ContextMut) -> Vec<Instr> 
                             offset: 1,
                         }),
                     )),
-                    JumpI(Jump::L(write_barrier_lbl.clone())),
+                    JumpI(Jump::L(write_barrier_pass_lbl.clone())),
                     Mov(ToReg(Rdi, OReg(Rbx))),
                     Mov(ToReg(Rsi, OReg(Rax))),
                     Call(Label::new(Some("snek_write_barrier"))),
-                    LabelI(write_barrier_lbl),
+                    LabelI(write_barrier_pass_lbl),
                 ]);
             }
             // Set the value, Rbx is callee saved
@@ -1317,14 +1317,14 @@ pub fn compile_expr(e: &Expr, co: &Context, com: &mut ContextMut) -> Vec<Instr> 
             }
 
             let index_valid = com.label("index_valid");
-            let index_zero = com.label("index_zero");
+            let alloc_complete = com.label("alloc_complete");
             instrs.extend(vec![
                 Cmp(ToReg(Rax, Imm(0))),
                 Mov(ToReg(Rdi, Imm(40))),
                 JumpI(Jump::G(index_valid.clone())),
                 Mov(ToReg(Rbx, NIL)),
                 CMovI(CMov::E(Rax, OReg(Rbx))),
-                JumpI(Jump::E(index_zero.clone())),
+                JumpI(Jump::E(alloc_complete.clone())),
                 Mov(ToReg(Rdi, Imm(40))),
                 JumpI(Jump::U(snek_error.clone())),
                 LabelI(index_valid),
@@ -1471,7 +1471,7 @@ pub fn compile_expr(e: &Expr, co: &Context, com: &mut ContextMut) -> Vec<Instr> 
                     },
                     OReg(Rbx),
                 )),
-                JumpI(Jump::U(index_zero.clone())),
+                JumpI(Jump::U(alloc_complete.clone())),
                 // Alloc nursery
                 // Check heap availability
                 LabelI(alloc_nursery),
@@ -1578,7 +1578,7 @@ pub fn compile_expr(e: &Expr, co: &Context, com: &mut ContextMut) -> Vec<Instr> 
                     },
                     OReg(Rbx),
                 )),
-                LabelI(index_zero),
+                LabelI(alloc_complete),
             ]);
             co.rax_to_target(&mut instrs);
             com.result_type = Some(List);
