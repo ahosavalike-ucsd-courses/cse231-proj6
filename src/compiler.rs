@@ -941,7 +941,7 @@ pub fn compile_expr(e: &Expr, co: &Context, com: &mut ContextMut) -> Vec<Instr> 
                         },
                         Imm(co.si),
                     )),
-                    Call(Label::new(Some("snek_gc"))),
+                    Call(Label::new(Some("snek_major_gc"))),
                     Mov(co.src_to_target(Imm(0))),
                 ]);
                 com.result_type = Some(Int);
