@@ -19,7 +19,9 @@ static FUNCTIONS: Lazy<Mutex<HashMap<u64, FunDefEnv>>> = Lazy::new(|| Mutex::new
 static LABELS: Lazy<Mutex<HashMap<Label, DynamicLabel>>> = Lazy::new(|| Mutex::new(hashmap! {}));
 static FUNCTION_INDEX: Mutex<u64> = Mutex::new(0);
 pub static mut HEAP_START: *const u64 = std::ptr::null();
-pub static HEAP_META_SIZE: usize = 3;
+pub static HEAP_META_SIZE: usize = 5;
+pub static mut REMEMBERED_SET: *mut std::collections::HashSet<*const u64> =
+    std::ptr::null::<std::collections::HashSet<*const u64>>() as *mut _;
 
 // Compiles the initial stub for the function
 fn function_compile_initial(
@@ -136,16 +138,25 @@ pub fn repl(eval_input: Option<(&Vec<Expr>, &Expr, &str)>, heap_size: Option<usi
     let mut define_stack: Vec<u64> = vec![0; 1];
 
     let heap_size = heap_size.unwrap_or(16384);
+    let nursery_size = heap_size / 10;
     let heap_len = HEAP_META_SIZE + heap_size;
     let mut heap = vec![0; heap_len];
-    // Placeholder for offset
+    // Nursery offset
     heap[0] = unsafe { heap.as_mut_ptr().add(HEAP_META_SIZE) } as u64;
-    // Placeholder for end of heap
-    heap[1] = unsafe { heap.as_mut_ptr().add(heap_len) } as u64;
+    // Nursery end of heap
+    heap[1] = unsafe { heap.as_mut_ptr().add(HEAP_META_SIZE + nursery_size) } as u64;
     // Placeholder for Rsp base
     heap[2] = 0;
+    // Main GC offset
+    heap[3] = heap[1];
+    // Main GC end of heap
+    heap[4] = unsafe { heap.as_mut_ptr().add(heap_len) } as u64;
 
-    unsafe { HEAP_START = heap.as_ptr() };
+
+    unsafe {
+        HEAP_START = heap.as_ptr();
+        REMEMBERED_SET = &mut std::collections::HashSet::new();
+    }
 
     // 1 word for stack usage, 1 word for input
     let mut co = Context::new(Some(define_stack.as_mut_ptr())).modify_si(2);
