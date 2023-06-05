@@ -47,7 +47,12 @@ unsafe extern "C" fn snek_write_barrier(major_heap_addr: *const u64, val: u64) -
     val
 }
 
-unsafe extern "C" fn snek_try_gc(count: isize, curr_rbp: *const u64, curr_rsp: *const u64, minor: u64) -> *const u64 {
+unsafe extern "C" fn snek_try_gc(
+    count: isize,
+    curr_rbp: *const u64,
+    curr_rsp: *const u64,
+    minor: u64,
+) -> *const u64 {
     if minor == 0 {
         // Need to allocate in major heap
         snek_major_gc(curr_rbp, curr_rsp);
@@ -72,7 +77,7 @@ unsafe extern "C" fn snek_minor_gc(curr_rbp: *const u64, curr_rsp: *const u64) {
 unsafe fn snek_minor_major_copy_gc(
     curr_rbp: *const u64,
     curr_rsp: *const u64,
-    minor_stack_refs: Option<Vec<(*const u64, *const u64)>>,
+    minor_stack_refs: Option<HashSet<(*const u64, *const u64)>>,
 ) {
     let mut minor_stack_refs = if minor_stack_refs.is_some() {
         minor_stack_refs.unwrap()
@@ -82,13 +87,13 @@ unsafe fn snek_minor_major_copy_gc(
 
     // Track references from REMEMBERED set just like stack references
     for major_heap_ptr in &*REMEMBERED_SET {
-        minor_stack_refs.push((*major_heap_ptr, (**major_heap_ptr - 1) as *const u64));
+        minor_stack_refs.insert((*major_heap_ptr, (**major_heap_ptr - 1) as *const u64));
     }
 
     let minor_usage = minor_stack_refs.iter().map(|(_, hp)| **hp + 2).sum::<u64>() as isize;
     let major_free_space =
         (*HEAP_START.add(4) as *const u64).offset_from(*HEAP_START.add(3) as *const u64);
-    
+
     if minor_usage > major_free_space {
         snek_major_gc(curr_rbp, curr_rsp);
     } else {
@@ -281,14 +286,43 @@ impl Iterator for StackIter {
     }
 }
 
+unsafe fn live_minor_major_refs(
+    acc: &mut HashSet<(*const u64, *const u64)>,
+    minor_addr: *const u64,
+) {
+    if *minor_addr == 1 {
+        return;
+    }
+    let major_lower = *HEAP_START.add(1) as *const u64;
+    let len = *minor_addr.add(1);
+    // Mark
+    *(minor_addr as *mut u64) = 1;
+    for i in 0..len as usize {
+        let val = *minor_addr.add(i + 2);
+        if val & 3 != 1 || val == 1 {
+            continue;
+        }
+        let refd = (val - 1) as *const u64;
+        if refd.offset_from(major_lower) >= 0 {
+            // Major ref
+            acc.insert((minor_addr.add(i + 2), refd));
+        } else {
+            live_minor_major_refs(acc, refd);
+        }
+    }
+}
+
 // This function traverses the stack frames to gather the root set
 unsafe fn root_set(
     stack_base: *const u64,
     curr_rbp: *const u64,
     curr_rsp: *const u64,
-) -> (Vec<(*const u64, *const u64)>, Vec<(*const u64, *const u64)>) {
-    let mut major_set = vec![];
-    let mut minor_set = vec![];
+) -> (
+    HashSet<(*const u64, *const u64)>,
+    HashSet<(*const u64, *const u64)>,
+) {
+    let mut major_set = HashSet::new();
+    let mut minor_set = HashSet::new();
     let stack = Stack::new(curr_rbp, curr_rsp, stack_base);
 
     let major_lower = *HEAP_START.add(1) as *const u64;
@@ -300,14 +334,23 @@ unsafe fn root_set(
         if val & 3 == 1 && val != 1 {
             let ptr = val as *const u64;
             if ptr.offset_from(major_lower) >= 0 && major_upper.offset_from(ptr) > 0 {
-                major_set.push((stack_ptr, (val - 1) as *const u64));
+                major_set.insert((stack_ptr, (val - 1) as *const u64));
             }
             if ptr.offset_from(minor_lower) >= 0 && minor_upper.offset_from(ptr) > 0 {
-                minor_set.push((stack_ptr, (val - 1) as *const u64));
+                minor_set.insert((stack_ptr, (val - 1) as *const u64));
             }
         }
     }
-    // TODO: Check for live data referred by elements in the nursery
+
+    // Check for data referred by live elements in the nursery to major heap
+    for (_, minor_heap_addr) in &minor_set {
+        // Clear mark
+        *(*minor_heap_addr as *mut u64) = 0;
+    }
+    for (_, minor_heap_addr) in &minor_set {
+        live_minor_major_refs(&mut major_set, *minor_heap_addr);
+    }
+
     // TODO: Also check define_stack
     (major_set, minor_set)
 }
@@ -515,7 +558,10 @@ pub fn add_interface_calls(
         ; ret
     );
     let snek_write_barrier_lbl = ops.new_dynamic_label();
-    lbls.insert(Label::new(Some("snek_write_barrier")), snek_write_barrier_lbl);
+    lbls.insert(
+        Label::new(Some("snek_write_barrier")),
+        snek_write_barrier_lbl,
+    );
     dynasm!(ops
         ; .arch x64
         ; =>snek_write_barrier_lbl
