@@ -879,8 +879,15 @@ pub fn compile_expr(e: &Expr, co: &Context, com: &mut ContextMut) -> Vec<Instr> 
                         }),
                     )),
                     JumpI(Jump::L(write_barrier_pass_lbl.clone())),
-                    Mov(ToReg(Rdi, OReg(Rbx))),
-                    Mov(ToReg(Rsi, OReg(Rax))),
+                    Mov(ToReg(
+                        Rdi,
+                        Mem(MemRef {
+                            reg: Rsp,
+                            offset: co.si,
+                        }),
+                    )),
+                    Mov(ToReg(Rsi, OReg(Rbx))),
+                    Mov(ToReg(Rdx, OReg(Rax))),
                     Call(Label::new(Some("snek_write_barrier"))),
                     LabelI(write_barrier_pass_lbl),
                 ]);
@@ -1100,7 +1107,7 @@ pub fn compile_expr(e: &Expr, co: &Context, com: &mut ContextMut) -> Vec<Instr> 
                         reg: R15,
                         offset: 5,
                     },
-                    Imm(es.len() as i32),
+                    Imm(es.len() as i32 + 2),
                 )),
                 JumpI(Jump::GE(alloc_nursery.clone())),
                 // Alloc in main heap
