@@ -20,8 +20,12 @@ static LABELS: Lazy<Mutex<HashMap<Label, DynamicLabel>>> = Lazy::new(|| Mutex::n
 static FUNCTION_INDEX: Mutex<u64> = Mutex::new(0);
 pub static mut HEAP_START: *const u64 = std::ptr::null();
 pub static HEAP_META_SIZE: usize = 6;
-pub static mut REMEMBERED_SET: *mut std::collections::HashSet<*const u64> =
-    std::ptr::null::<std::collections::HashSet<*const u64>>() as *mut _;
+// List address -> vec of offsets
+pub static mut REMEMBERED_MAP: *mut std::collections::HashMap<
+    *const u64,
+    std::collections::HashSet<usize>,
+> = std::ptr::null::<std::collections::HashMap<*const u64, std::collections::HashSet<usize>>>()
+    as *mut _;
 
 // Compiles the initial stub for the function
 fn function_compile_initial(
@@ -154,10 +158,9 @@ pub fn repl(eval_input: Option<(&Vec<Expr>, &Expr, &str)>, heap_size: Option<usi
     // Length of nursery
     heap[5] = nursery_size as u64;
 
-
     unsafe {
         HEAP_START = heap.as_ptr();
-        REMEMBERED_SET = &mut std::collections::HashSet::new();
+        REMEMBERED_MAP = &mut std::collections::HashMap::new();
     }
 
     // 1 word for stack usage, 1 word for input

@@ -1,9 +1,14 @@
 use std::collections::{HashMap, HashSet};
 use std::env;
+use std::iter::FromIterator;
 
 static mut HEAP_START: *const u64 = std::ptr::null();
-static mut REMEMBERED_SET: *mut HashSet<*const u64> =
-    std::ptr::null::<HashSet<*const u64>>() as *mut _;
+// Heap value address -> List address
+static mut REMEMBERED_MAP: *mut std::collections::HashMap<
+    *const u64,
+    std::collections::HashSet<usize>,
+> = std::ptr::null::<std::collections::HashMap<*const u64, std::collections::HashSet<usize>>>()
+    as *mut _;
 static HEAP_META_SIZE: usize = 6;
 
 const TRUE_VAL: i64 = 7;
@@ -124,12 +129,20 @@ fn print_result(result: i64) -> i64 {
 }
 
 #[export_name = "\x01snek_write_barrier"]
-pub unsafe fn snek_write_barrier(major_heap_addr: *const u64, val: u64) -> u64 {
+pub unsafe fn snek_write_barrier(lst: u64, major_heap_addr: *const u64, val: u64) -> u64 {
     let val_ptr = val as *const u64;
     let minor_lower = HEAP_START.add(HEAP_META_SIZE);
     let minor_upper = *HEAP_START as *const u64;
+    let lst = (lst - 1) as *const u64;
+    let offset = major_heap_addr.offset_from(lst) as usize;
     if val_ptr.offset_from(minor_lower) >= 0 && minor_upper.offset_from(val_ptr) > 0 {
-        (*REMEMBERED_SET).insert(major_heap_addr);
+        if !(*REMEMBERED_MAP).contains_key(&lst) {
+            (*REMEMBERED_MAP).insert(lst, HashSet::new());
+        }
+        (*REMEMBERED_MAP).get_mut(&lst).unwrap().insert(offset);
+    } else if (*REMEMBERED_MAP).contains_key(&lst) {
+        // Remove from tracked set
+        (*REMEMBERED_MAP).get_mut(&lst).unwrap().remove(&offset);
     }
     val
 }
@@ -163,21 +176,51 @@ pub unsafe fn snek_minor_gc(curr_rbp: *const u64, curr_rsp: *const u64) {
     snek_minor_major_copy_gc(curr_rbp, curr_rsp, None)
 }
 
+// Clear GC in minor
+unsafe fn clear_gc_minor() {
+    let minor_lower = HEAP_START.add(HEAP_META_SIZE);
+    let minor_upper = *HEAP_START.add(1) as *const u64;
+    let mut ptr = minor_lower as *mut u64;
+    while minor_upper.offset_from(ptr) > 0 {
+        *ptr = 0;
+        ptr = ptr.add(*ptr.add(1) as usize + 2);
+    }
+}
+
+// Find any minor references given a minor address
+unsafe fn live_minor_minor_refs(
+    acc: &mut HashSet<(*const u64, *const u64)>,
+    minor_addr: *const u64,
+) {
+    if *minor_addr == 1 {
+        return;
+    }
+    let minor_upper = *HEAP_START.add(1) as *const u64;
+    let len = *minor_addr.add(1);
+    // Mark
+    *(minor_addr as *mut u64) = 1;
+    for i in 0..len as usize {
+        let val = *minor_addr.add(i + 2);
+        if val & 3 != 1 || val == 1 {
+            continue;
+        }
+        let refd = (val - 1) as *const u64;
+        if minor_upper.offset_from(refd) > 0 {
+            acc.insert((minor_addr.add(i + 2), refd));
+            live_minor_minor_refs(acc, refd);
+        }
+    }
+}
+
 pub unsafe fn snek_minor_major_copy_gc(
     curr_rbp: *const u64,
     curr_rsp: *const u64,
     minor_stack_refs: Option<HashSet<(*const u64, *const u64)>>,
 ) {
-    let mut minor_stack_refs = if minor_stack_refs.is_some() {
-        minor_stack_refs.unwrap()
-    } else {
-        root_set(*HEAP_START.add(2) as *const u64, curr_rbp, curr_rsp).1
-    };
-
-    // Track references from REMEMBERED set just like stack references
-    for major_heap_ptr in &*REMEMBERED_SET {
-        minor_stack_refs.insert((*major_heap_ptr, (**major_heap_ptr - 1) as *const u64));
-    }
+    let mut minor_stack_refs = minor_stack_refs
+        .unwrap_or(root_set(*HEAP_START.add(2) as *const u64, curr_rbp, curr_rsp).1);
+    let minor_stack_refs: HashMap<*const u64, *const u64> =
+        HashMap::from_iter(minor_stack_refs.drain());
 
     let minor_usage = minor_stack_refs.iter().map(|(_, hp)| **hp + 2).sum::<u64>() as isize;
     let major_free_space =
@@ -190,13 +233,21 @@ pub unsafe fn snek_minor_major_copy_gc(
         let mut dst = *HEAP_START.add(3) as *mut u64;
         // Perform copy
         let mut mapper: HashMap<*const u64, Vec<*const u64>> = HashMap::new();
-        for (stack_ptr, minor_ptr) in minor_stack_refs {
+        let mut tracker: HashMap<*const u64, *const u64> = HashMap::new();
+        for i in &minor_stack_refs {
+            let (stack_ptr, minor_ptr) = (*i.0, *i.1);
             if mapper.contains_key(&minor_ptr) {
                 mapper.get_mut(&minor_ptr).unwrap().push(stack_ptr);
             } else {
                 let len = *minor_ptr.add(1) as usize + 2;
-                for i in 0..len {
-                    *dst.add(i) = *minor_ptr.add(i);
+                *dst = 0;
+                for i in 1..len {
+                    let src = minor_ptr.add(i);
+                    // Track if the src itself is being relocated
+                    if minor_stack_refs.contains_key(&src) {
+                        tracker.insert(src, dst.add(i));
+                    }
+                    *dst.add(i) = *src;
                 }
                 // Set GC word to destination
                 *(minor_ptr as *mut u64) = dst as u64;
@@ -214,12 +265,15 @@ pub unsafe fn snek_minor_major_copy_gc(
         // Update stack refs
         for (minor_ptr, stack_ptrs) in mapper {
             for stack_ptr in stack_ptrs {
+                // Check for relocated source
+                let dst = *tracker.get(&stack_ptr).unwrap_or(&stack_ptr) as *mut u64;
                 // Tag the address
-                *(stack_ptr as *mut u64) = *minor_ptr as u64 + 1;
+                *dst = *minor_ptr as u64 + 1;
             }
+            *(minor_ptr as *mut u64) = 0;
         }
 
-        (*REMEMBERED_SET).clear();
+        (*REMEMBERED_MAP).clear();
     }
 }
 
@@ -379,6 +433,7 @@ impl Iterator for StackIter {
     }
 }
 
+// Find any major references given a minor address
 unsafe fn live_minor_major_refs(
     acc: &mut HashSet<(*const u64, *const u64)>,
     minor_addr: *const u64,
@@ -436,12 +491,31 @@ unsafe fn root_set(
     }
 
     // Check for data referred by live elements in the nursery to major heap
-    for (_, minor_heap_addr) in &minor_set {
-        // Clear mark
-        *(*minor_heap_addr as *mut u64) = 0;
-    }
+    clear_gc_minor();
     for (_, minor_heap_addr) in &minor_set {
         live_minor_major_refs(&mut major_set, *minor_heap_addr);
+    }
+
+    // Check for data referred by live elements in the nursery
+    let major_stack_refs: HashMap<*const u64, *const u64> =
+        HashMap::from_iter(major_set.clone().drain());
+
+    // Track references from REMEMBERED set just like stack references
+    for (_, major_heap_lst) in &major_stack_refs {
+        for offset in (*REMEMBERED_MAP)
+            .get(major_heap_lst)
+            .unwrap_or(&HashSet::new())
+        {
+            let major_ptr = (*major_heap_lst).add(*offset);
+            let minor_lst = (*major_ptr - 1) as *const u64;
+            minor_set.insert((major_ptr, minor_lst));
+        }
+    }
+
+    // Track recursive references from minor to minor
+    clear_gc_minor();
+    for (_, minor_list) in minor_set.clone() {
+        live_minor_minor_refs(&mut minor_set, minor_list);
     }
 
     (major_set, minor_set)
@@ -488,6 +562,10 @@ unsafe fn forward_heap_refs(heap_addr: *mut u64) {
         let entry = heap_addr.add(i + 2) as *mut u64;
         if *entry & 3 == 1 && *entry != 1 {
             let old_entry = (*entry - 1) as *mut u64;
+            // Forward only if old entry points to the main heap
+            if old_entry.offset_from(*HEAP_START.add(1) as *const u64) < 0 {
+                continue;
+            }
             *entry = *old_entry | 1;
             forward_heap_refs(old_entry);
         }
@@ -516,12 +594,9 @@ unsafe fn compact(heap_ptr: *const u64) {
         }
 
         // Update remembered set
-        for i in 2..len {
-            let p = ptr.add(i) as *const u64;
-            if (*REMEMBERED_SET).contains(&p) {
-                (*REMEMBERED_SET).remove(&p);
-                (*REMEMBERED_SET).insert(dst.add(i));
-            }
+        if (*REMEMBERED_MAP).contains_key(&(ptr as *const u64)) {
+            let offsets = (*REMEMBERED_MAP).remove(&(ptr as *const u64)).unwrap();
+            (*REMEMBERED_MAP).insert(dst, offsets);
         }
 
         // Clear GC word
@@ -610,7 +685,7 @@ fn main() {
 
     unsafe {
         HEAP_START = heap.as_ptr();
-        REMEMBERED_SET = &mut HashSet::new();
+        REMEMBERED_MAP = &mut HashMap::new();
     }
 
     let i: i64 = unsafe { our_code_starts_here(input, HEAP_START as *mut u64) };
