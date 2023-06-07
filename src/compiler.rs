@@ -1326,18 +1326,18 @@ pub fn compile_expr(e: &Expr, co: &Context, com: &mut ContextMut) -> Vec<Instr> 
                 OReg(Rax),
             )));
 
-            let index_valid = com.label("index_valid");
+            let count_valid = com.label("count_valid");
             let alloc_complete = com.label("alloc_complete");
             instrs.extend(vec![
                 Cmp(ToReg(Rax, Imm(0))),
                 Mov(ToReg(Rdi, Imm(40))),
-                JumpI(Jump::G(index_valid.clone())),
+                JumpI(Jump::G(count_valid.clone())),
                 Mov(ToReg(Rbx, NIL)),
                 CMovI(CMov::E(Rax, OReg(Rbx))),
                 JumpI(Jump::E(alloc_complete.clone())),
                 Mov(ToReg(Rdi, Imm(40))),
                 JumpI(Jump::U(snek_error.clone())),
-                LabelI(index_valid),
+                LabelI(count_valid),
             ]);
 
             // Value
