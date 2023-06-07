@@ -1,0 +1,4 @@
+(let ((n input))
+  (loop
+    (if (= n 0) (break 100)
+        (set! n (- n 1)))))
