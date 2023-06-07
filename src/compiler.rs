@@ -1294,15 +1294,6 @@ pub fn compile_expr(e: &Expr, co: &Context, com: &mut ContextMut) -> Vec<Instr> 
         Expr::SizedList(c, v) => {
             // Count
             instrs.extend(compile_expr(c, &co.modify_target(None), com));
-            // Copy to stack after converting to numeric form
-            instrs.push(Sar(Rax, 1));
-            instrs.push(Mov(ToMem(
-                MemRef {
-                    reg: Rsp,
-                    offset: co.si,
-                },
-                OReg(Rax),
-            )));
             match com.result_type {
                 Some(Int) => {}
                 Some(_) => {
@@ -1315,6 +1306,15 @@ pub fn compile_expr(e: &Expr, co: &Context, com: &mut ContextMut) -> Vec<Instr> 
                     instrs.push(JumpI(Jump::NZ(snek_error.clone())));
                 }
             }
+            // Copy to stack after converting to numeric form
+            instrs.push(Sar(Rax, 1));
+            instrs.push(Mov(ToMem(
+                MemRef {
+                    reg: Rsp,
+                    offset: co.si,
+                },
+                OReg(Rax),
+            )));
 
             let index_valid = com.label("index_valid");
             let alloc_complete = com.label("alloc_complete");
