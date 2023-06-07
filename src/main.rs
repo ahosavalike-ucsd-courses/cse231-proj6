@@ -51,8 +51,9 @@ fn main() -> std::io::Result<()> {
     }
 
     let com = &mut ContextMut::new();
+    let funcs = funcs.iter().map(optimize).collect();
     let funcs = compile_func_defns(&funcs, com);
-    let expr = optimize(expr);
+    let expr = optimize(&expr);
     let result = compile_expr_aligned(&expr, None, Some(com), None);
 
     let asm_program = format!(
