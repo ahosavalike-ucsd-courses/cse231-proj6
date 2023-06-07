@@ -12,7 +12,7 @@ pub(crate) enum TestKind {
 #[macro_export]
 macro_rules! success_tests {
     ($($tt:tt)*) => {
-        mod comp_succ { $crate::compile_tests!(Success => $($tt)*); }
+        mod comp_succ { $crate::compile_tests!(Success, true => $($tt)*); }
         mod eval_succ { $crate::eval_tests!(Success => $($tt)*); }
     }
 }
@@ -20,7 +20,7 @@ macro_rules! success_tests {
 #[macro_export]
 macro_rules! runtime_error_tests {
     ($($tt:tt)*) => {
-        mod comp_run { $crate::compile_tests!(RuntimeError => $($tt)*); }
+        mod comp_run { $crate::compile_tests!(RuntimeError, true => $($tt)*); }
         mod eval_run { $crate::eval_tests!(RuntimeError => $($tt)*); }
     }
 }
@@ -28,24 +28,24 @@ macro_rules! runtime_error_tests {
 #[macro_export]
 macro_rules! static_error_tests {
     ($($tt:tt)*) => {
-        mod comp_stat { $crate::compile_tests!(StaticError => $($tt)*); }
+        mod comp_stat { $crate::compile_tests!(StaticError, false => $($tt)*); }
         mod eval_stat { $crate::eval_tests!(StaticError => $($tt)*); }
     }
 }
 
 #[macro_export]
 macro_rules! success_compile_tests {
-    ($($tt:tt)*) => { mod comp_succ { $crate::compile_tests!(Success => $($tt)*); }}
+    ($($tt:tt)*) => { mod comp_succ { $crate::compile_tests!(Success, true => $($tt)*); }}
 }
 
 #[macro_export]
 macro_rules! runtime_error_compile_tests {
-    ($($tt:tt)*) => { mod comp_run { $crate::compile_tests!(RuntimeError => $($tt)*); }}
+    ($($tt:tt)*) => { mod comp_run { $crate::compile_tests!(RuntimeError, true => $($tt)*); }}
 }
 
 #[macro_export]
 macro_rules! static_error_compile_tests {
-    ($($tt:tt)*) => { mod comp_stat { $crate::compile_tests!(StaticError => $($tt)*); }}
+    ($($tt:tt)*) => { mod comp_stat { $crate::compile_tests!(StaticError, false => $($tt)*); }}
 }
 
 #[macro_export]
@@ -65,13 +65,14 @@ macro_rules! static_error_eval_tests {
 
 #[macro_export]
 macro_rules! compile_tests {
-    ($kind:ident =>
+    ($kind:ident, $profile:literal =>
         $(
             {
                 name: $name:ident,
                 file: $file:literal,
                 $(input: $input:literal,)?
                 $(heap_size: $heap_size:literal,)?
+                $(time_trials: $time_trials:literal,)?
                 expected: $expected:literal $(,)?
                 $(" $(tt:$tt)* ")?
             }
@@ -87,8 +88,11 @@ macro_rules! compile_tests {
                 #[allow(unused_assignments, unused_mut)]
                 let mut heap_size = None;
                 $(heap_size = Some($heap_size);)?
+                #[allow(unused_assignments, unused_mut)]
+                let mut time_trials = None;
+                $(time_trials = Some($time_trials);)?
                 let kind = $crate::infra::TestKind::$kind;
-                $crate::infra::run_test_compile(stringify!($name), $file, input, heap_size, $expected, kind);
+                $crate::infra::run_test_compile(stringify!($name), $file, input, heap_size, time_trials, $expected, kind, $profile);
             }
         )*
     };
@@ -126,20 +130,119 @@ macro_rules! eval_tests {
 }
 
 #[allow(dead_code)]
+fn profile(name: &str, input: Option<&str>, heap_size: Option<usize>, time_trials: Option<u32>) {
+    println!("Profiling: {name}");
+    if cfg!(windows) {
+        eprintln!("The profiling tools being used do not work on your platform.");
+        return;
+    }
+
+    let mut program_str = mk_path(name, Ext::Run).to_str().unwrap().to_owned();
+    if let Some(input) = input {
+        program_str.push_str(" ");
+        program_str.push_str(input);
+    }
+    if let Some(heap_size) = heap_size {
+        program_str.push_str(" ");
+        program_str.push_str(&heap_size.to_string());
+    }
+
+    profile_dynamic_instr_count(&program_str);
+    profile_static_instr_count(mk_path(name, Ext::Obj).to_str().unwrap());
+    profile_time_taken(&program_str, time_trials);
+}
+
+fn profile_dynamic_instr_count(program_str: &str) {
+    let cmd = if cfg!(target_os = "linux") {
+        format!("valgrind --tool=callgrind --callgrind-out-file=tests/callgrind.out {program_str} >/dev/null 2>&1 && grep \"^summary:\" tests/callgrind.out | awk '{{print $2}}'")
+    } else {
+        eprintln!("valgrind is only available on Linux. Using usr/bin/time to gauge instructions instead (use it only for relative comparisons on your system)");
+        format!(
+            "/usr/bin/time -l {program_str} 2>&1 | grep -i \"instructions\" | awk '{{print $1}}'"
+        )
+    };
+
+    let out = Command::new("sh").args(["-c", &cmd]).output().unwrap();
+    if out.status.success() {
+        let out_str = String::from_utf8(out.stdout).unwrap().trim().to_string();
+        println!("Instructions executed: {out_str}");
+    } else {
+        eprintln!("Failed to measure instructions executed");
+    }
+    println!();
+}
+
+fn profile_static_instr_count(program_str: &str) {
+    let cmd = if cfg!(target_os = "linux") {
+        format!("objdump -d -M intel \"{program_str}\" | awk -F'\\t' '{{if ($3 != \"\") {{count++}}}} END {{print count}}'")
+    } else {
+        format!( "objdump -d --x86-asm-syntax=intel {program_str} | grep '^\\ ' | expand | cut -c41- | sed 's/ .*//' | wc -l")
+    };
+
+    let out = Command::new("sh").args(["-c", &cmd]).output().unwrap();
+    if out.status.success() {
+        let out_str = String::from_utf8(out.stdout).unwrap().trim().to_string();
+        println!("Instructions in generated .s: {out_str}");
+    } else {
+        eprintln!("Failed to get static instruction count");
+    }
+
+    let cmd = if cfg!(target_os = "linux") {
+        format!("objdump -d -M intel \"{program_str}\" | awk -F'\\t' '{{if ($3 != \"\") {{split($3, instr, /[[:space:]]/); print instr[1]}}}}' | sort | uniq -c | sort -nr")
+    } else {
+        format!( "objdump -d --x86-asm-syntax=intel {program_str} | grep '^\\ ' | expand | cut -c41- | sed 's/ .*//' | sed '/^$/d' | sort | uniq -c | sort -nr")
+    };
+
+    let out_counts = Command::new("sh").args(["-c", &cmd]).output().unwrap();
+    if out_counts.status.success() {
+        let out_str = String::from_utf8(out_counts.stdout).unwrap().to_string();
+        println!("Instructions by type in your generated assembly before linking is:\n{out_str}");
+    } else {
+        eprintln!("Failed to get static instruction types counts");
+    }
+    println!();
+}
+
+fn profile_time_taken(program_str: &str, trials: Option<u32>) {
+    let cmd = if cfg!(target_os = "linux") {
+        format!(
+            "perf stat -e task-clock:u {program_str} 2>&1 | grep -oP '(\\d+\\.\\d+)' | head -n 1"
+        )
+    } else {
+        eprintln!("perf is only available on Linux. Using usr/bin/time instead.");
+        format!("/usr/bin/time -p {program_str} 2>&1 | grep 'user' | awk '{{print $2}}'")
+    };
+
+    println!("Time taken in ms (seconds on MacOS):");
+    for i in 1..(trials.unwrap_or(5) + 1) {
+        let out = Command::new("sh").args(["-c", &cmd]).output().unwrap();
+        if out.status.success() {
+            let out_str = String::from_utf8(out.stdout).unwrap().trim().to_string();
+            println!("{i} {out_str}");
+        } else {
+            eprintln!("{i} Failed to measure time taken");
+        }
+    }
+    println!();
+}
+
+#[allow(dead_code)]
 pub(crate) fn run_test_compile(
     name: &str,
     file: &str,
     input: Option<&str>,
     heap_size: Option<usize>,
+    time_trials: Option<u32>,
     expected: &str,
     kind: TestKind,
+    profile: bool,
 ) {
     let file = Path::new("tests").join(file);
 
     // Compile Test
     match kind {
-        TestKind::Success => run_success_test(name, &file, expected, input, heap_size),
-        TestKind::RuntimeError => run_runtime_error_test(name, &file, expected, input, heap_size),
+        TestKind::Success => run_success_test(name, &file, expected, input, heap_size, profile, time_trials),
+        TestKind::RuntimeError => run_runtime_error_test(name, &file, expected, input, heap_size, profile, time_trials),
         TestKind::StaticError => run_static_error_test(name, &file, expected),
     }
 }
@@ -187,6 +290,8 @@ fn run_success_test(
     expected: &str,
     input: Option<&str>,
     heap_size: Option<usize>,
+    prof: bool,
+    time_trials: Option<u32>,
 ) {
     if let Err(err) = compile(name, file) {
         panic!("expected a successful compilation, but got an error: `{err}`");
@@ -198,6 +303,9 @@ fn run_success_test(
         Ok(actual_output) => {
             diff(expected, actual_output);
         }
+    }
+    if prof {
+        profile(name, input, heap_size, time_trials);
     }
 }
 
@@ -226,6 +334,8 @@ fn run_runtime_error_test(
     expected: &str,
     input: Option<&str>,
     heap_size: Option<usize>,
+    prof: bool,
+    time_trials: Option<u32>,
 ) {
     if let Err(err) = compile(name, file) {
         panic!("expected a successful compilation, but got an error: `{err}`");
@@ -235,6 +345,9 @@ fn run_runtime_error_test(
             panic!("expected a runtime error, but program executed succesfully - expected error: `{expected}`, output: `{out}`");
         }
         Err(err) => check_error_msg(&err, expected),
+    }
+    if prof {
+        profile(name, input, heap_size, time_trials);
     }
 }
 
@@ -367,6 +480,7 @@ fn mk_path(name: &str, ext: Ext) -> PathBuf {
 enum Ext {
     Asm,
     Run,
+    Obj,
 }
 
 impl std::fmt::Display for Ext {
@@ -374,6 +488,7 @@ impl std::fmt::Display for Ext {
         match self {
             Ext::Asm => write!(f, "s"),
             Ext::Run => write!(f, "run"),
+            Ext::Obj => write!(f, "o"),
         }
     }
 }

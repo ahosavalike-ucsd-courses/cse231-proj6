@@ -1,6 +1,6 @@
 mod infra;
 
-success_tests! {
+success_compile_tests! {
 	{
 		name: nested_arith1_1,
 		file: "nested_arith1.snek",
@@ -25,6 +25,7 @@ success_tests! {
 		name: func_nested_mutual_recursive_tail_3,
 		file: "func_nested_mutual_recursive_tail.snek",
 		input: "1",
+		time_trials: 100,
 		expected: "243",
 	},
 	{
@@ -652,7 +653,7 @@ success_tests! {
 	},
 }
 
-static_error_tests! {
+static_error_compile_tests! {
 	{
 		name: unbound_identifier_fail2_1,
 		file: "unbound_identifier_fail2.snek",
@@ -850,7 +851,7 @@ static_error_tests! {
 	},
 }
 
-runtime_error_tests! {
+runtime_error_compile_tests! {
 	{
 		name: list3_2,
 		file: "list3.snek",

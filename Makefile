@@ -21,9 +21,7 @@ tests/%.run: tests/%.s runtime/start.rs
 
 .PHONY: test
 test:
-	cargo build
-	cargo build $(TARGET)
-	cargo test
+	cargo test -- --show-output
 
 .PRECIOUS: tests/%.run tests/%.s
 clean:
