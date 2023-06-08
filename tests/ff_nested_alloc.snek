@@ -1,0 +1,13 @@
+(fun (rec n) (block
+    (make-vec 8 n)
+    (if (> n 0) (rec (- n 1)) n)
+))
+
+(rec input)
+
+; ((input 10) (output 0))
+; ((input 10) (heap_size 10) (dynamic "out of memory"))
+; ((input 10) (heap_size 11) (output 0))
+; ((input 100) (heap_size 10) (dynamic "out of memory"))
+; ((input 100) (heap_size 11) (output 0))
+; ((input 100) (heap_size 100) (output 0))

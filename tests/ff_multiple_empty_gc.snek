@@ -1,0 +1,15 @@
+(block
+    (gc)
+    (make-vec 8 0)
+    (let ((x (vec 1 2 3 4 5 6 7 8))) (
+        vec-set! x 2 4
+    ))
+    (let ((x 0)) (loop (if (> (set! x (+ x 1)) input) (break x) (gc))))
+)
+
+; ((input 10) (output 11))
+; ((input 10) (heap_size 10) (dynamic "out of memory"))
+; ((input 10) (heap_size 11) (output 11))
+; ((input 100) (heap_size 10) (dynamic "out of memory"))
+; ((input 100) (heap_size 11) (output 101))
+; ((input 100) (heap_size 100) (output 101))

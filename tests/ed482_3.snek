@@ -1,0 +1,10 @@
+(fun (f m n)
+  (if (= m 0)
+      (add1 n)
+      (if (= n 0)
+          (f (sub1 m) 1)
+          (f (sub1 m) (f m (sub1 n))))))
+
+(f 3 3)
+
+; (output 61)

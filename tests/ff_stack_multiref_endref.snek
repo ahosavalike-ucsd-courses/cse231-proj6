@@ -1,0 +1,20 @@
+(block
+    (let ((x (vec 1 2 3)) (y x) (z y)) (block
+        (let ((a (vec 1 2 4))) (
+            print a
+        ))
+        (gc)
+        (print y)
+    ))
+    (gc)
+    ; Empty heap
+    (make-vec 5 nil)
+    (let ((x (vec 1))) (
+        ; Trigger GC
+        make-vec 5 0
+    ))
+)
+
+; (output "[1, 2, 4]" "[1, 2, 3]" "[0, 0, 0, 0, 0]")
+; ((input false) (heap_size 11) (output "[1, 2, 4]" "[1, 2, 3]" "[0, 0, 0, 0, 0]"))
+; ((input false) (heap_size 10) (dynamic "out of memory"))

@@ -1,0 +1,62 @@
+; Anthony
+(fun (insertion_sort list)
+    (let ((i 1))
+        (loop
+            (if (< i (vec-len list))
+                (let ((key (vec-get list i)) (j (sub1 i)))
+                    (block 
+                        (loop
+                            (if (>= j 0)
+                                (if (< key (vec-get list j))
+                                    (block
+                                        (vec-set! list (add1 j) (vec-get list j))
+                                        (set! j (sub1 j))
+                                    )
+                                    (break 0)
+                                )
+                                (break 0)
+                            )
+                        )
+                        (vec-set! list (add1 j) key)
+                        (set! i (add1 i))
+                    )
+                )
+                (break i)
+            )
+        )
+    ) 
+)
+
+(fun (range n m)
+    (let ((list (make-vec (- m n) nil)) (i 0))
+        (let ((val m))
+            (loop 
+                (if (< i (vec-len list))
+                    (block 
+                        (vec-set! list i m)
+                        (set! i (add1 i))
+                        (set! m (sub1 m))
+                    )
+                    (break list)
+                )
+            )
+        )
+    )
+)
+
+(block
+    (let ((list (range 0 input)))
+        (block 
+            (insertion_sort list)
+        )
+    )
+    (let ((list (range 0 input)))
+        (block 
+            (insertion_sort list)
+        )
+    )
+    true
+)
+
+; ((input 1000) (heap_size 1113) (output true))
+; ((input 1000) (heap_size 1112) (dynamic "out of memory"))

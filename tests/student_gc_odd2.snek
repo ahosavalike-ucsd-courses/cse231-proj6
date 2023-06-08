@@ -1,0 +1,43 @@
+; Anthony
+
+(let ((elements (make-vec input nil)))
+    (block
+       (let ((i 0))
+           (loop 
+                (if (< i (vec-len elements))
+                    (block
+                        (vec-set! elements i (make-vec i i))
+                        (set! i (add1 i))
+                    )
+                    (break i)
+                )
+           )
+       )
+       (let ((i 1))
+           (loop 
+                (if (< i (vec-len elements))
+                    (block
+                        (vec-set! elements i nil)
+                        (set! i (+ i 2))        
+                    )
+                    (break i)
+                )
+           )
+        )
+       (gc)
+       (let ((i 1))
+           (loop 
+                (if (< i (vec-len elements))
+                    (block
+                        (vec-set! elements i (make-vec i i))
+                        (set! i (+ i 2))        
+                    )
+                    (break i)
+                )
+           )
+        )
+       89
+    )
+)
+
+; ((input 128) (output 89))

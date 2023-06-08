@@ -12,6 +12,8 @@ use repl::*;
 mod repl_helper;
 mod structs;
 use structs::*;
+mod optimize;
+use optimize::*;
 
 fn main() -> std::io::Result<()> {
     let args: Vec<String> = env::args().collect();
@@ -49,7 +51,9 @@ fn main() -> std::io::Result<()> {
     }
 
     let com = &mut ContextMut::new();
+    let funcs = funcs.iter().map(optimize).collect();
     let funcs = compile_func_defns(&funcs, com);
+    let expr = optimize(&expr);
     let result = compile_expr_aligned(&expr, None, Some(com), None);
 
     let asm_program = format!(
@@ -58,7 +62,9 @@ extern snek_error
 extern snek_print
 extern snek_deep_equal
 extern snek_try_gc
-extern snek_gc
+extern snek_minor_gc
+extern snek_major_gc
+extern snek_write_barrier
 global our_code_starts_here
 snek_error_stub:
  mov rsp, [r15 + 16] ; 3nd word in heap

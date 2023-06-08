@@ -1,0 +1,43 @@
+; Anthony
+
+(let ((elements (make-vec input nil)))
+    (block
+       (let ((i 0))
+           (loop 
+                (if (< i (vec-len elements))
+                    (block
+                        (vec-set! elements i (make-vec 1 i))
+                        (set! i (add1 i))
+                    )
+                    (break i)
+                )
+           )
+       )
+       (let ((i 1))
+           (loop 
+                (if (< i (vec-len elements))
+                    (block
+                        (vec-set! elements i nil)
+                        (set! i (+ i 2))        
+                    )
+                    (break i)
+                )
+           )
+        )
+       (gc)
+       (let ((i 1))
+           (loop 
+                (if (< i (vec-len elements))
+                    (block
+                        (vec-set! elements i (make-vec 1 i))
+                        (set! i (+ i 2))        
+                    )
+                    (break i)
+                )
+           )
+        )
+    )
+)
+
+; ((input 10000) (heap_size 42870) (output 10001))
+; ((input 10000) (heap_size 42869) (dynamic "out of memory"))

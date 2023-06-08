@@ -1,0 +1,9 @@
+(fun (x y z) 0)
+
+(block
+    (x (vec 0 1) (vec -1 -2))
+    (x (vec 0 1) (vec -1 -2))
+)
+
+; ((input 1) (output 0))
+;; ((input 1) (heap_size 8) (output 0))

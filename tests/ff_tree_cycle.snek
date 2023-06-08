@@ -1,0 +1,34 @@
+(fun (append lst val) (
+    let ((nlen (vec-len lst)) (newlst (make-vec (+ 1 nlen) val))) (block 
+        (gc)
+        (loop (
+            if (= (set! nlen (- nlen 1)) -1) (break newlst) (
+                vec-set! newlst nlen (vec-get lst nlen)
+            )
+        ))
+    )
+))
+
+(fun (node val) (
+    vec (vec val)
+))
+
+(fun (addref src target) (
+    vec-set! src 0 (append (vec-get src 0) target)
+))
+
+(let ((root (node 1)) (b (node 2)) (c (node 3))) (block
+    (addref root b)
+    (addref root c)
+    (if input (gc) 0)
+    (addref b root)
+    (addref c root)
+    root
+))
+
+; (output "[[1, [[2, [...]]], [[3, [...]]]]]")
+; ((input true) (output "[[1, [[2, [...]]], [[3, [...]]]]]"))
+; ((input true) (heap_size 27) (output "[[1, [[2, [...]]], [[3, [...]]]]]"))
+; ((input true) (heap_size 26) (dynamic "out of memory"))
+; ((input false) (heap_size 27) (output "[[1, [[2, [...]]], [[3, [...]]]]]"))
+; ((input false) (heap_size 26) (dynamic "out of memory"))

@@ -438,7 +438,7 @@ pub fn compile_expr(e: &Expr, co: &Context, com: &mut ContextMut) -> Vec<Instr> 
                         }
                         Some(List) => instrs.extend(vec![
                             Cmp(ToReg(Rax, NIL)),
-                            Mov(ToReg(Rdi, Imm(40))),
+                            Mov(ToReg(Rdi, Imm(25))),
                             JumpI(Jump::Z(snek_error.clone())),
                         ]),
                         _ => {
@@ -463,12 +463,13 @@ pub fn compile_expr(e: &Expr, co: &Context, com: &mut ContextMut) -> Vec<Instr> 
                             return instrs;
                         }
                     }
-                    // 1 <= Index(snek) <= length(int)
+                    // 1 <= Index(snek) <= length(int) after adding 1
                     instrs.extend(vec![
                         // Remove tag from address
                         Sub(ToReg(Rax, Imm(1))),
-                        // Convert index from snek to number
+                        // Convert index from snek to 1 based number
                         Sar(Rbx, 1),
+                        Add(ToReg(Rbx, Imm(1))),
                         // Error code index out of bounds
                         Mov(ToReg(Rdi, Imm(40))),
                         // Test upper bound
@@ -761,7 +762,7 @@ pub fn compile_expr(e: &Expr, co: &Context, com: &mut ContextMut) -> Vec<Instr> 
                 }
                 Some(List) => instrs.extend(vec![
                     Cmp(ToReg(Rax, NIL)),
-                    Mov(ToReg(Rdi, Imm(40))),
+                    Mov(ToReg(Rdi, Imm(25))),
                     JumpI(Jump::Z(snek_error.clone())),
                 ]),
                 _ => {
@@ -799,6 +800,7 @@ pub fn compile_expr(e: &Expr, co: &Context, com: &mut ContextMut) -> Vec<Instr> 
             )));
             // Compile value
             instrs.extend(compile_expr(val, &co_child.modify_si(co.si + 2), com));
+            let val_type = com.result_type;
             instrs.extend(vec![
                 // Get heap address
                 Mov(ToReg(
@@ -828,9 +830,10 @@ pub fn compile_expr(e: &Expr, co: &Context, com: &mut ContextMut) -> Vec<Instr> 
                 Mov(ToReg(Rax, OReg(Rdi))),
                 // Remove tag from address
                 Sub(ToReg(Rbx, Imm(1))),
-                // Convert index from snek to number
+                // Convert index from snek to 1 based number
                 Sar(Rax, 1),
-                // 1 <= Index(snek) <= length(int) test
+                Add(ToReg(Rax, Imm(1))),
+                // 1 <= Index(snek) <= length(int) test after increment
                 // Error code index out of bounds
                 Mov(ToReg(Rdi, Imm(40))),
                 // Test upper bound
@@ -858,28 +861,60 @@ pub fn compile_expr(e: &Expr, co: &Context, com: &mut ContextMut) -> Vec<Instr> 
                         offset: co.si + 1,
                     }),
                 )),
-                Mov(ToMem(
-                    MemRef {
-                        reg: Rbx,
-                        offset: 0,
-                    },
-                    OReg(Rax),
-                )),
-                // Set result
-                Mov(ToReg(
-                    Rax,
-                    Mem(MemRef {
-                        reg: Rsp,
-                        offset: co.si,
-                    }),
-                )),
             ]);
+
+            // Call write barrier if value is a list
+            // Only needed if lst is in major heap
+            if let None | Some(List) = val_type {
+                let write_barrier_pass_lbl = com.label("write_barrier_pass");
+                com.index_used();
+                instrs.extend(vec![
+                    // Check if Rbx is within major heap
+                    // Cmp to start of major heap, cannot be greater than the end of major heap
+                    Cmp(ToReg(
+                        Rbx,
+                        Mem(MemRef {
+                            reg: R15,
+                            offset: 1,
+                        }),
+                    )),
+                    JumpI(Jump::L(write_barrier_pass_lbl.clone())),
+                    Mov(ToReg(
+                        Rdi,
+                        Mem(MemRef {
+                            reg: Rsp,
+                            offset: co.si,
+                        }),
+                    )),
+                    Mov(ToReg(Rsi, OReg(Rbx))),
+                    Mov(ToReg(Rdx, OReg(Rax))),
+                    Call(Label::new(Some("snek_write_barrier"))),
+                    LabelI(write_barrier_pass_lbl),
+                ]);
+            }
+            // Set the value, Rbx is callee saved
+            instrs.push(Mov(ToMem(
+                MemRef {
+                    reg: Rbx,
+                    offset: 0,
+                },
+                OReg(Rax),
+            )));
+            // Set result
+            instrs.push(Mov(ToReg(
+                Rax,
+                Mem(MemRef {
+                    reg: Rsp,
+                    offset: co.si,
+                }),
+            )));
+
             co.rax_to_target(&mut instrs);
             com.result_type = Some(List);
         }
         Expr::Block(es) => {
             let mut co = co.clone();
-            for (_,v) in co.env.iter_mut() {
+            for (_, v) in co.env.iter_mut() {
                 v.vtype = None;
             }
             // Only last expression in the block can be a tail position
@@ -939,7 +974,7 @@ pub fn compile_expr(e: &Expr, co: &Context, com: &mut ContextMut) -> Vec<Instr> 
                         },
                         Imm(co.si),
                     )),
-                    Call(Label::new(Some("snek_gc"))),
+                    Call(Label::new(Some("snek_major_gc"))),
                     Mov(co.src_to_target(Imm(0))),
                 ]);
                 com.result_type = Some(Int);
@@ -1059,10 +1094,93 @@ pub fn compile_expr(e: &Expr, co: &Context, com: &mut ContextMut) -> Vec<Instr> 
                 ));
             }
 
-            let alloc_succ = com.label("alloc_succ");
+            let alloc_nursery = com.label("alloc_nursery");
+            let alloc_succ_main = com.label("alloc_succ_main");
+            let alloc_succ_nursery = com.label("alloc_succ_nursery");
+            let alloc_complete = com.label("alloc_complete");
             com.index_used();
 
             instrs.extend(vec![
+                // Check if it fits in nursery
+                Cmp(ToMem(
+                    MemRef {
+                        reg: R15,
+                        offset: 5,
+                    },
+                    Imm(es.len() as i32 + 2),
+                )),
+                JumpI(Jump::GE(alloc_nursery.clone())),
+                // Alloc in main heap
+                // Get heap head
+                Mov(ToReg(
+                    Rbx,
+                    Mem(MemRef {
+                        reg: R15,
+                        offset: 3,
+                    }),
+                )),
+                // Check if space exists to allocate
+                Mov(ToReg(Rax, OReg(Rbx))),
+                Add(ToReg(Rax, Imm((es.len() + 2) as i32 * 8))), // 2 word metadata
+                Cmp(ToReg(
+                    Rax,
+                    Mem(MemRef {
+                        reg: R15,
+                        offset: 4,
+                    }),
+                )),
+                JumpI(Jump::LE(alloc_succ_main.clone())),
+                // Insufficient mem, Call GC
+                Mov(ToReg(Rdi, Imm(es.len() as i32 + 2))),
+                Mov(ToReg(Rsi, OReg(Rbp))),
+                Mov(ToReg(Rdx, OReg(Rsp))),
+                Mov(ToReg(Rcx, Imm(0))), // Major alloc
+                // Set stack usage
+                Mov(ToMem(
+                    MemRef {
+                        reg: Rsp,
+                        offset: 0,
+                    },
+                    Imm(co.si + es.len() as i32),
+                )),
+                Call(Label::new(Some("snek_try_gc"))),
+                // Continue if success
+                LabelI(alloc_succ_main),
+                // Get heap head again
+                Mov(ToReg(
+                    Rbx,
+                    Mem(MemRef {
+                        reg: R15,
+                        offset: 3,
+                    }),
+                )),
+                // Clear GC word
+                Mov(ToMem(
+                    MemRef {
+                        reg: Rbx,
+                        offset: 0,
+                    },
+                    Imm(0),
+                )),
+                // Length as the second value
+                Mov(ToMem(
+                    MemRef {
+                        reg: Rbx,
+                        offset: 1,
+                    },
+                    Imm64(es.len() as i64),
+                )),
+                // Move heap offset, two words extra for GC and length
+                Add(ToMem(
+                    MemRef {
+                        reg: R15,
+                        offset: 3,
+                    },
+                    Imm(8 * (2 + es.len() as i32)),
+                )),
+                JumpI(Jump::U(alloc_complete.clone())),
+                // Alloc in nursery
+                LabelI(alloc_nursery),
                 // Get heap head
                 Mov(ToReg(
                     Rbx,
@@ -1081,11 +1199,12 @@ pub fn compile_expr(e: &Expr, co: &Context, com: &mut ContextMut) -> Vec<Instr> 
                         offset: 1,
                     }),
                 )),
-                JumpI(Jump::LE(alloc_succ.clone())),
+                JumpI(Jump::LE(alloc_succ_nursery.clone())),
                 // Insufficient mem, Call GC
                 Mov(ToReg(Rdi, Imm(es.len() as i32 + 2))),
                 Mov(ToReg(Rsi, OReg(Rbp))),
                 Mov(ToReg(Rdx, OReg(Rsp))),
+                Mov(ToReg(Rcx, Imm(1))), // Minor alloc
                 // Set stack usage
                 Mov(ToMem(
                     MemRef {
@@ -1096,7 +1215,7 @@ pub fn compile_expr(e: &Expr, co: &Context, com: &mut ContextMut) -> Vec<Instr> 
                 )),
                 Call(Label::new(Some("snek_try_gc"))),
                 // Continue if success
-                LabelI(alloc_succ),
+                LabelI(alloc_succ_nursery),
                 // Get heap head again
                 Mov(ToReg(
                     Rbx,
@@ -1121,6 +1240,16 @@ pub fn compile_expr(e: &Expr, co: &Context, com: &mut ContextMut) -> Vec<Instr> 
                     },
                     Imm64(es.len() as i64),
                 )),
+                // Move heap offset, two words extra for GC and length
+                Add(ToMem(
+                    MemRef {
+                        reg: R15,
+                        offset: 0,
+                    },
+                    Imm(8 * (2 + es.len() as i32)),
+                )),
+                // Complete
+                LabelI(alloc_complete),
             ]);
 
             for i in 0..es.len() as i32 {
@@ -1140,30 +1269,13 @@ pub fn compile_expr(e: &Expr, co: &Context, com: &mut ContextMut) -> Vec<Instr> 
                 )));
             }
             // Set target to address and tag with 1
+            instrs.push(Add(ToReg(Rbx, Imm(1))));
             instrs.push(Mov(co.src_to_target(OReg(Rbx))));
-            instrs.push(Add(co.src_to_target(Imm(1))));
-            // Move heap offset, two words extra for GC and length
-            instrs.push(Add(ToMem(
-                MemRef {
-                    reg: R15,
-                    offset: 0,
-                },
-                Imm(8 * (2 + es.len() as i32)),
-            )));
             com.result_type = Some(List);
         }
         Expr::SizedList(c, v) => {
             // Count
             instrs.extend(compile_expr(c, &co.modify_target(None), com));
-            // Copy to stack after converting to numeric form
-            instrs.push(Sar(Rax, 1));
-            instrs.push(Mov(ToMem(
-                MemRef {
-                    reg: Rsp,
-                    offset: co.si,
-                },
-                OReg(Rax),
-            )));
             match com.result_type {
                 Some(Int) => {}
                 Some(_) => {
@@ -1176,19 +1288,28 @@ pub fn compile_expr(e: &Expr, co: &Context, com: &mut ContextMut) -> Vec<Instr> 
                     instrs.push(JumpI(Jump::NZ(snek_error.clone())));
                 }
             }
+            // Copy to stack after converting to numeric form
+            instrs.push(Sar(Rax, 1));
+            instrs.push(Mov(ToMem(
+                MemRef {
+                    reg: Rsp,
+                    offset: co.si,
+                },
+                OReg(Rax),
+            )));
 
-            let index_valid = com.label("index_valid");
-            let index_zero = com.label("index_zero");
+            let count_valid = com.label("count_valid");
+            let alloc_complete = com.label("alloc_complete");
             instrs.extend(vec![
                 Cmp(ToReg(Rax, Imm(0))),
                 Mov(ToReg(Rdi, Imm(40))),
-                JumpI(Jump::G(index_valid.clone())),
+                JumpI(Jump::G(count_valid.clone())),
                 Mov(ToReg(Rbx, NIL)),
                 CMovI(CMov::E(Rax, OReg(Rbx))),
-                JumpI(Jump::E(index_zero.clone())),
+                JumpI(Jump::E(alloc_complete.clone())),
                 Mov(ToReg(Rdi, Imm(40))),
                 JumpI(Jump::U(snek_error.clone())),
-                LabelI(index_valid),
+                LabelI(count_valid),
             ]);
 
             // Value
@@ -1202,8 +1323,11 @@ pub fn compile_expr(e: &Expr, co: &Context, com: &mut ContextMut) -> Vec<Instr> 
                 com,
             ));
 
-            let alloc_succ = com.label("alloc_succ");
-            let fill_list = com.label("fill_list");
+            let alloc_nursery = com.label("alloc_nursery");
+            let alloc_nursery_succ = com.label("alloc_nursery_succ");
+            let alloc_main_succ = com.label("alloc_main_succ");
+            let fill_list_nursery = com.label("fill_list_nursery");
+            let fill_list_main = com.label("fill_list_main");
             com.index_used();
             instrs.extend(vec![
                 // Check heap availability
@@ -1216,7 +1340,124 @@ pub fn compile_expr(e: &Expr, co: &Context, com: &mut ContextMut) -> Vec<Instr> 
                 )),
                 Mov(ToReg(Rdi, OReg(Rax))), // GC arg, need to add metadata length
                 Add(ToReg(Rax, Imm(2))),    // Metadata length
-                Sal(Rax, 3),                // * 8
+                // Check if it fits in nursery
+                Cmp(ToMem(
+                    MemRef {
+                        reg: R15,
+                        offset: 5,
+                    },
+                    OReg(Rax),
+                )),
+                JumpI(Jump::GE(alloc_nursery.clone())),
+                Sal(Rax, 3), // * 8
+                // Alloc in main heap
+                Add(ToReg(
+                    Rax,
+                    Mem(MemRef {
+                        reg: R15,
+                        offset: 3,
+                    }),
+                )),
+                Cmp(ToReg(
+                    Rax,
+                    Mem(MemRef {
+                        reg: R15,
+                        offset: 4,
+                    }),
+                )),
+                Mov(ToReg(Rbx, OReg(Rdi))),
+                JumpI(Jump::LE(alloc_main_succ.clone())),
+                // Call GC
+                Add(ToReg(Rdi, Imm(2))), // Add metadata length
+                Mov(ToReg(Rsi, OReg(Rbp))),
+                Mov(ToReg(Rdx, OReg(Rsp))),
+                Mov(ToReg(Rcx, Imm(0))), // Main alloc
+                // co.si and co.si+1 are used
+                Mov(ToMem(
+                    MemRef {
+                        reg: Rsp,
+                        offset: 0,
+                    },
+                    Imm(co.si + 2),
+                )),
+                Call(Label::new(Some("snek_try_gc"))),
+                // Continue
+                LabelI(alloc_main_succ),
+                // Rbx has count, Rax has base of heap, Rdi has the value to fill
+                Mov(ToReg(
+                    Rax,
+                    Mem(MemRef {
+                        reg: R15,
+                        offset: 3,
+                    }),
+                )),
+                Mov(ToReg(
+                    Rdi,
+                    Mem(MemRef {
+                        reg: Rsp,
+                        offset: co.si + 1,
+                    }),
+                )),
+                // Clear GC word
+                Mov(ToMem(
+                    MemRef {
+                        reg: Rax,
+                        offset: 0,
+                    },
+                    Imm(0),
+                )),
+                // Set length
+                Mov(ToMem(
+                    MemRef {
+                        reg: Rax,
+                        offset: 1,
+                    },
+                    OReg(Rbx),
+                )),
+                Add(ToReg(Rax, Imm(16))),
+                // Fill list
+                LabelI(fill_list_main.clone()),
+                Mov(ToMem(
+                    MemRef {
+                        reg: Rax,
+                        offset: 0,
+                    },
+                    OReg(Rdi),
+                )),
+                Add(ToReg(Rax, Imm(8))),
+                Sub(ToReg(Rbx, Imm(1))),
+                JumpI(Jump::NZ(fill_list_main)),
+                // Tag address to return
+                Mov(ToReg(
+                    Rax,
+                    Mem(MemRef {
+                        reg: R15,
+                        offset: 3,
+                    }),
+                )),
+                Add(ToReg(Rax, Imm(1))),
+                Mov(ToReg(
+                    Rbx,
+                    Mem(MemRef {
+                        reg: Rsp,
+                        offset: co.si,
+                    }),
+                )),
+                // Increment heap pointer
+                Add(ToReg(Rbx, Imm(2))),
+                Sal(Rbx, 3),
+                Add(ToMem(
+                    MemRef {
+                        reg: R15,
+                        offset: 3,
+                    },
+                    OReg(Rbx),
+                )),
+                JumpI(Jump::U(alloc_complete.clone())),
+                // Alloc nursery
+                // Check heap availability
+                LabelI(alloc_nursery),
+                Sal(Rax, 3), // * 8
                 Add(ToReg(
                     Rax,
                     Mem(MemRef {
@@ -1232,11 +1473,12 @@ pub fn compile_expr(e: &Expr, co: &Context, com: &mut ContextMut) -> Vec<Instr> 
                     }),
                 )),
                 Mov(ToReg(Rbx, OReg(Rdi))),
-                JumpI(Jump::LE(alloc_succ.clone())),
+                JumpI(Jump::LE(alloc_nursery_succ.clone())),
                 // Call GC
                 Add(ToReg(Rdi, Imm(2))), // Add metadata length
                 Mov(ToReg(Rsi, OReg(Rbp))),
                 Mov(ToReg(Rdx, OReg(Rsp))),
+                Mov(ToReg(Rcx, Imm(1))), // Minor alloc
                 // co.si and co.si+1 are used
                 Mov(ToMem(
                     MemRef {
@@ -1247,7 +1489,7 @@ pub fn compile_expr(e: &Expr, co: &Context, com: &mut ContextMut) -> Vec<Instr> 
                 )),
                 Call(Label::new(Some("snek_try_gc"))),
                 // Continue
-                LabelI(alloc_succ),
+                LabelI(alloc_nursery_succ),
                 // Rbx has count, Rax has base of heap, Rdi has the value to fill
                 Mov(ToReg(
                     Rax,
@@ -1281,7 +1523,7 @@ pub fn compile_expr(e: &Expr, co: &Context, com: &mut ContextMut) -> Vec<Instr> 
                 )),
                 Add(ToReg(Rax, Imm(16))),
                 // Fill list
-                LabelI(fill_list.clone()),
+                LabelI(fill_list_nursery.clone()),
                 Mov(ToMem(
                     MemRef {
                         reg: Rax,
@@ -1291,7 +1533,7 @@ pub fn compile_expr(e: &Expr, co: &Context, com: &mut ContextMut) -> Vec<Instr> 
                 )),
                 Add(ToReg(Rax, Imm(8))),
                 Sub(ToReg(Rbx, Imm(1))),
-                JumpI(Jump::NZ(fill_list)),
+                JumpI(Jump::NZ(fill_list_nursery)),
                 // Tag address to return
                 Mov(ToReg(
                     Rax,
@@ -1318,7 +1560,7 @@ pub fn compile_expr(e: &Expr, co: &Context, com: &mut ContextMut) -> Vec<Instr> 
                     },
                     OReg(Rbx),
                 )),
-                LabelI(index_zero),
+                LabelI(alloc_complete),
             ]);
             co.rax_to_target(&mut instrs);
             com.result_type = Some(List);

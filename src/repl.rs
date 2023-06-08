@@ -19,7 +19,13 @@ static FUNCTIONS: Lazy<Mutex<HashMap<u64, FunDefEnv>>> = Lazy::new(|| Mutex::new
 static LABELS: Lazy<Mutex<HashMap<Label, DynamicLabel>>> = Lazy::new(|| Mutex::new(hashmap! {}));
 static FUNCTION_INDEX: Mutex<u64> = Mutex::new(0);
 pub static mut HEAP_START: *const u64 = std::ptr::null();
-pub static HEAP_META_SIZE: usize = 3;
+pub static HEAP_META_SIZE: usize = 6;
+// List address -> vec of offsets
+pub static mut REMEMBERED_MAP: *mut std::collections::HashMap<
+    *const u64,
+    std::collections::HashSet<usize>,
+> = std::ptr::null::<std::collections::HashMap<*const u64, std::collections::HashSet<usize>>>()
+    as *mut _;
 
 // Compiles the initial stub for the function
 fn function_compile_initial(
@@ -136,16 +142,26 @@ pub fn repl(eval_input: Option<(&Vec<Expr>, &Expr, &str)>, heap_size: Option<usi
     let mut define_stack: Vec<u64> = vec![0; 1];
 
     let heap_size = heap_size.unwrap_or(16384);
+    let nursery_size = heap_size / 10;
     let heap_len = HEAP_META_SIZE + heap_size;
     let mut heap = vec![0; heap_len];
-    // Placeholder for offset
+    // Nursery offset
     heap[0] = unsafe { heap.as_mut_ptr().add(HEAP_META_SIZE) } as u64;
-    // Placeholder for end of heap
-    heap[1] = unsafe { heap.as_mut_ptr().add(heap_len) } as u64;
+    // Nursery end of heap
+    heap[1] = unsafe { heap.as_mut_ptr().add(HEAP_META_SIZE + nursery_size) } as u64;
     // Placeholder for Rsp base
     heap[2] = 0;
+    // Main GC offset
+    heap[3] = heap[1];
+    // Main GC end of heap
+    heap[4] = unsafe { heap.as_mut_ptr().add(heap_len) } as u64;
+    // Length of nursery
+    heap[5] = nursery_size as u64;
 
-    unsafe { HEAP_START = heap.as_ptr() };
+    unsafe {
+        HEAP_START = heap.as_ptr();
+        REMEMBERED_MAP = &mut std::collections::HashMap::new();
+    }
 
     // 1 word for stack usage, 1 word for input
     let mut co = Context::new(Some(define_stack.as_mut_ptr())).modify_si(2);
@@ -243,9 +259,9 @@ pub fn repl(eval_input: Option<(&Vec<Expr>, &Expr, &str)>, heap_size: Option<usi
 
         // Add top level list
         let keywords = &vec![
-            "add1", "sub1", "let", "isnum", "isbool", "islist", "if", "loop", "break", "set!",
-            "block", "print", "fun", "define", "nil", "list", "index", "slist", "len", "+", "-",
-            "*", "/", "<", ">", ">=", "<=", "=", "==",
+            "add1", "sub1", "let", "isnum", "isbool", "isvec", "if", "loop", "break", "set!",
+            "vec-set!", "block", "input", "print", "fun", "define", "nil", "vec", "vec-get",
+            "make-vec", "vec-len", "+", "-", "*", "/", "<", ">", ">=", "<=", "=", "==",
         ];
         for k in keywords {
             if line.starts_with(k) {

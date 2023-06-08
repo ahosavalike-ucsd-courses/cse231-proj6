@@ -1,9 +1,10 @@
 use dynasmrt::{dynasm, x64::Assembler, AssemblyOffset, DynamicLabel, DynasmApi, DynasmLabelApi};
-use im::{HashMap, HashSet};
+use im::HashMap;
+use std::collections::HashSet;
 use std::mem;
 
 use crate::compiler::*;
-use crate::repl::{HEAP_META_SIZE, HEAP_START};
+use crate::repl::{HEAP_META_SIZE, HEAP_START, REMEMBERED_MAP};
 use crate::structs::*;
 
 pub extern "C" fn snek_error_exit(errcode: i64) {
@@ -29,39 +30,187 @@ pub extern "C" fn snek_error_print(errcode: i64) {
             1 => "invalid representation",
             i if i >= 20 && i <= 29 => "invalid argument",
             i if i >= 30 && i <= 39 => "overflow",
-            i if i == 40 => "index out of range",
+            i if i == 40 => "index out of bounds",
             i if i == 50 => "divide by zero",
             _ => "",
         }
     );
 }
 
-unsafe extern "C" fn snek_try_gc(count: isize, curr_rbp: *const u64, curr_rsp: *const u64) {
-    let heap_end = *HEAP_START.add(1) as *const u64;
-    let new_heap_ptr = snek_gc(curr_rbp, curr_rsp);
-    if heap_end.offset_from(new_heap_ptr) < count {
-        eprintln!("out of memory");
-        std::process::exit(5)
+unsafe fn snek_write_barrier(lst: u64, major_heap_addr: *const u64, val: u64) -> u64 {
+    let val_ptr = val as *const u64;
+    let minor_lower = HEAP_START.add(HEAP_META_SIZE);
+    let minor_upper = *HEAP_START as *const u64;
+    let lst = (lst - 1) as *const u64;
+    let offset = major_heap_addr.offset_from(lst) as usize;
+    if val_ptr.offset_from(minor_lower) >= 0 && minor_upper.offset_from(val_ptr) > 0 {
+        if !(*REMEMBERED_MAP).contains_key(&lst) {
+            (*REMEMBERED_MAP).insert(lst, HashSet::new());
+        }
+        (*REMEMBERED_MAP).get_mut(&lst).unwrap().insert(offset);
+    } else if (*REMEMBERED_MAP).contains_key(&lst) {
+        // Remove from tracked set
+        (*REMEMBERED_MAP).get_mut(&lst).unwrap().remove(&offset);
+    }
+    val
+}
+
+unsafe extern "C" fn snek_try_gc(
+    count: isize,
+    curr_rbp: *const u64,
+    curr_rsp: *const u64,
+    minor: u64,
+) -> *const u64 {
+    if minor == 0 {
+        // Need to allocate in major heap
+        snek_major_gc(curr_rbp, curr_rsp);
+        let major_ptr = *HEAP_START.add(3) as *const u64;
+        let major_end = *HEAP_START.add(4) as *const u64;
+        if major_end.offset_from(major_ptr) < count {
+            eprintln!("out of memory");
+            std::process::exit(5)
+        }
+        *HEAP_START.add(3) as *const u64
+    } else {
+        // Need to allocate in minor heap
+        snek_minor_gc(curr_rbp, curr_rsp);
+        *HEAP_START as *const u64
     }
 }
 
-unsafe fn snek_gc(curr_rbp: *const u64, curr_rsp: *const u64) -> *const u64 {
-    let heap_ptr = *HEAP_START as *const u64;
+unsafe extern "C" fn snek_minor_gc(curr_rbp: *const u64, curr_rsp: *const u64) {
+    snek_minor_major_copy_gc(curr_rbp, curr_rsp, None)
+}
+
+// Clear GC in minor
+unsafe fn clear_gc_minor() {
+    let minor_lower = HEAP_START.add(HEAP_META_SIZE);
+    let minor_upper = *HEAP_START.add(1) as *const u64;
+    let mut ptr = minor_lower as *mut u64;
+    while minor_upper.offset_from(ptr) > 0 {
+        *ptr = 0;
+        ptr = ptr.add(*ptr.add(1) as usize + 2);
+    }
+}
+
+// Find any minor references given a minor address
+unsafe fn live_minor_minor_refs(
+    acc: &mut HashSet<(*const u64, *const u64)>,
+    minor_addr: *const u64,
+) {
+    if *minor_addr == 1 {
+        return;
+    }
+    let minor_upper = *HEAP_START.add(1) as *const u64;
+    let len = *minor_addr.add(1);
+    // Mark
+    *(minor_addr as *mut u64) = 1;
+    for i in 0..len as usize {
+        let val = *minor_addr.add(i + 2);
+        if val & 3 != 1 || val == 1 {
+            continue;
+        }
+        let refd = (val - 1) as *const u64;
+        if minor_upper.offset_from(refd) > 0 {
+            acc.insert((minor_addr.add(i + 2), refd));
+            live_minor_minor_refs(acc, refd);
+        }
+    }
+}
+
+unsafe fn snek_minor_major_copy_gc(
+    curr_rbp: *const u64,
+    curr_rsp: *const u64,
+    minor_stack_refs: Option<HashSet<(*const u64, *const u64)>>,
+) {
+    let mut minor_stack_refs = minor_stack_refs
+        .unwrap_or(root_set(*HEAP_START.add(2) as *const u64, curr_rbp, curr_rsp).1);
+    let minor_stack_refs: HashMap<*const u64, *const u64> =
+        HashMap::from_iter(minor_stack_refs.drain());
+
+    let minor_usage = minor_stack_refs.iter().map(|(_, hp)| **hp + 2).sum::<u64>() as isize;
+    let major_free_space =
+        (*HEAP_START.add(4) as *const u64).offset_from(*HEAP_START.add(3) as *const u64);
+
+    if minor_usage > major_free_space {
+        snek_major_gc(curr_rbp, curr_rsp);
+    } else {
+        // Free space in main heap
+        let mut dst = *HEAP_START.add(3) as *mut u64;
+        // Perform copy
+        let mut mapper: HashMap<*const u64, Vec<*const u64>> = HashMap::new();
+        let mut tracker: HashMap<*const u64, *const u64> = HashMap::new();
+        for i in &minor_stack_refs {
+            let (stack_ptr, minor_ptr) = (*i.0, *i.1);
+            if mapper.contains_key(&minor_ptr) {
+                mapper.get_mut(&minor_ptr).unwrap().push(stack_ptr);
+            } else {
+                let len = *minor_ptr.add(1) as usize + 2;
+                *dst = 0;
+                for i in 1..len {
+                    let src = minor_ptr.add(i);
+                    // Track if the src itself is being relocated
+                    if minor_stack_refs.contains_key(&src) {
+                        tracker.insert(src, dst.add(i));
+                    }
+                    *dst.add(i) = *src;
+                }
+                // Set GC word to destination
+                *(minor_ptr as *mut u64) = dst as u64;
+                // Move dst
+                dst = dst.add(len);
+                mapper.insert(minor_ptr, vec![stack_ptr]);
+            }
+        }
+        // Update metadata
+        // Main GC free start
+        *(HEAP_START.add(3) as *mut u64) = dst as u64;
+        // Nursery (empty) free start
+        *(HEAP_START as *mut u64) = HEAP_START.add(HEAP_META_SIZE) as u64;
+
+        // Update stack refs
+        for (minor_ptr, stack_ptrs) in mapper {
+            for stack_ptr in stack_ptrs {
+                // Check for relocated source
+                let dst = *tracker.get(&stack_ptr).unwrap_or(&stack_ptr) as *mut u64;
+                // Tag the address
+                *dst = *minor_ptr as u64 + 1;
+            }
+            *(minor_ptr as *mut u64) = 0;
+        }
+
+        (*REMEMBERED_MAP).clear();
+    }
+}
+
+unsafe extern "C" fn snek_major_gc(curr_rbp: *const u64, curr_rsp: *const u64) {
+    let major_heap_free_ptr = *HEAP_START.add(3) as *const u64;
     let stack_base = *HEAP_START.add(2) as *const u64;
-    let stack_refs = root_set(stack_base, curr_rbp, curr_rsp);
+    let (major_stack_refs, minor_stack_refs) = root_set(stack_base, curr_rbp, curr_rsp);
+
     // 1. Mark
-    for (_, heap_addr) in &stack_refs {
+    for (_, heap_addr) in &major_stack_refs {
         mark(*heap_addr as *mut u64);
     }
     // 2. Forward headers
-    forward_headers(heap_ptr);
+    forward_headers(major_heap_free_ptr);
     // 3. Forward stack and heap internal references
-    for (stack_ptr, heap_addr) in stack_refs {
+    for (stack_ptr, heap_addr) in major_stack_refs {
         *(stack_ptr as *mut u64) = *heap_addr | 1;
         forward_heap_refs(heap_addr as *mut u64);
     }
-    // 4. Compact and return
-    compact(heap_ptr)
+    // 4. Compact
+    compact(major_heap_free_ptr);
+
+    // Collect minor heap
+    let minor_usage = minor_stack_refs.iter().map(|(_, hp)| **hp + 2).sum::<u64>() as isize;
+    let major_free_space =
+        (*HEAP_START.add(4) as *const u64).offset_from(*HEAP_START.add(3) as *const u64);
+    if minor_usage > major_free_space {
+        eprintln!("out of memory");
+        std::process::exit(5);
+    }
+    snek_minor_major_copy_gc(curr_rbp, curr_rsp, Some(minor_stack_refs));
 }
 
 enum StackIterType {
@@ -96,14 +245,6 @@ impl Stack {
         StackIter::new(self, StackIterType::RetPtrIter)
     }
 }
-
-// impl Iterator for Stack {
-//     type Item = (*const u64, u64);
-
-//     fn next(&mut self) -> Option<Self::Item> {
-//         unsafe { self.iter().next() }
-//     }
-// }
 
 struct StackIter {
     stack: Stack,
@@ -194,25 +335,86 @@ impl Iterator for StackIter {
     }
 }
 
+// Find any major references given a minor address
+unsafe fn live_minor_major_refs(
+    acc: &mut HashSet<(*const u64, *const u64)>,
+    minor_addr: *const u64,
+) {
+    if *minor_addr == 1 {
+        return;
+    }
+    let major_lower = *HEAP_START.add(1) as *const u64;
+    let len = *minor_addr.add(1);
+    // Mark
+    *(minor_addr as *mut u64) = 1;
+    for i in 0..len as usize {
+        let val = *minor_addr.add(i + 2);
+        if val & 3 != 1 || val == 1 {
+            continue;
+        }
+        let refd = (val - 1) as *const u64;
+        if refd.offset_from(major_lower) >= 0 {
+            // Major ref
+            acc.insert((minor_addr.add(i + 2), refd));
+        } else {
+            live_minor_major_refs(acc, refd);
+        }
+    }
+}
+
 // This function traverses the stack frames to gather the root set
 unsafe fn root_set(
     stack_base: *const u64,
     curr_rbp: *const u64,
     curr_rsp: *const u64,
-) -> Vec<(*const u64, *const u64)> {
-    let mut set = vec![];
+) -> (
+    HashSet<(*const u64, *const u64)>,
+    HashSet<(*const u64, *const u64)>,
+) {
+    let mut major_set = HashSet::new();
+    let mut minor_set = HashSet::new();
     let stack = Stack::new(curr_rbp, curr_rsp, stack_base);
-    let upper = *HEAP_START as *const u64;
+
+    let major_lower = *HEAP_START.add(1) as *const u64;
+    let major_upper = *HEAP_START.add(3) as *const u64;
+    let minor_lower = HEAP_START.add(HEAP_META_SIZE);
+    let minor_upper = *HEAP_START as *const u64;
+
     for (stack_ptr, val) in stack.iter_val() {
         if val & 3 == 1 && val != 1 {
             let ptr = val as *const u64;
-
-            if ptr.offset_from(HEAP_START) > 0 && upper.offset_from(ptr) > 0 {
-                set.push((stack_ptr, (val - 1) as *const u64));
+            if ptr.offset_from(major_lower) >= 0 && major_upper.offset_from(ptr) > 0 {
+                major_set.insert((stack_ptr, (val - 1) as *const u64));
+            }
+            if ptr.offset_from(minor_lower) >= 0 && minor_upper.offset_from(ptr) > 0 {
+                minor_set.insert((stack_ptr, (val - 1) as *const u64));
             }
         }
     }
-    set
+
+    // Check for data referred by live elements in the nursery to major heap
+    clear_gc_minor();
+    for (_, minor_heap_addr) in &minor_set {
+        live_minor_major_refs(&mut major_set, *minor_heap_addr);
+    }
+
+    // Track references from REMEMBERED set just like stack references
+    for (major_heap_lst, offsets) in &*REMEMBERED_MAP {
+        for offset in offsets {
+            let major_ptr = (*major_heap_lst).add(*offset);
+            let minor_lst = (*major_ptr - 1) as *const u64;
+            minor_set.insert((major_ptr, minor_lst));
+        }
+    }
+
+    // Track recursive references from minor to minor
+    clear_gc_minor();
+    for (_, minor_list) in minor_set.clone() {
+        live_minor_minor_refs(&mut minor_set, minor_list);
+    }
+
+    // TODO: Also check define_stack
+    (major_set, minor_set)
 }
 
 // This function marks all references to heap given a starting heap value
@@ -234,8 +436,8 @@ unsafe fn mark(ele: *mut u64) {
 }
 
 unsafe fn forward_headers(heap_ptr: *const u64) {
-    let mut from = HEAP_START.add(HEAP_META_SIZE) as *mut u64;
-    let mut to = HEAP_START.add(HEAP_META_SIZE) as *mut u64;
+    let mut from = *HEAP_START.add(1) as *mut u64;
+    let mut to = *HEAP_START.add(1) as *mut u64;
     while heap_ptr.offset_from(from) > 0 {
         // If from is marked as live
         if *from == 1 {
@@ -256,15 +458,19 @@ unsafe fn forward_heap_refs(heap_addr: *mut u64) {
         let entry = heap_addr.add(i + 2) as *mut u64;
         if *entry & 3 == 1 && *entry != 1 {
             let old_entry = (*entry - 1) as *mut u64;
+            // Forward only if old entry points to the main heap
+            if old_entry.offset_from(*HEAP_START.add(1) as *const u64) < 0 {
+                continue;
+            }
             *entry = *old_entry | 1;
             forward_heap_refs(old_entry);
         }
     }
 }
 
-unsafe fn compact(heap_ptr: *const u64) -> *const u64 {
-    let mut ptr = HEAP_START.add(HEAP_META_SIZE) as *mut u64;
-    let mut r15 = HEAP_START.add(HEAP_META_SIZE);
+unsafe fn compact(heap_ptr: *const u64) {
+    let mut ptr = *HEAP_START.add(1) as *mut u64;
+    let mut r15 = *HEAP_START.add(1) as *const u64;
     while heap_ptr.offset_from(ptr) > 0 {
         // +2 to include metadata
         let len = *ptr.add(1) as usize + 2;
@@ -282,39 +488,55 @@ unsafe fn compact(heap_ptr: *const u64) -> *const u64 {
                 *dst.add(i) = *ptr.add(i);
             }
         }
+
+        // Update remembered set
+        if (*REMEMBERED_MAP).contains_key(&(ptr as *const u64)) {
+            let offsets = (*REMEMBERED_MAP).remove(&(ptr as *const u64)).unwrap();
+            (*REMEMBERED_MAP).insert(dst, offsets);
+        }
+
         // Clear GC word
         *dst = 0;
         ptr = ptr.add(len);
         r15 = dst.add(len);
     }
     // Modify the heap pointer metadata
-    *(HEAP_START as *mut u64) = r15 as u64;
-    r15
+    *(HEAP_START.add(3) as *mut u64) = r15 as u64;
 }
 
 #[allow(dead_code)]
-unsafe fn print_heap(heap_ptr: Option<*const u64>) {
-    let heap_ptr = if heap_ptr.is_some() {
-        heap_ptr.unwrap()
-    } else {
-        *HEAP_START as *const u64
-    };
-    println!("Heap: ");
-    let mut ptr = HEAP_START;
-    println!("{ptr:p}: {:#x} {:#x} {:#x}", *ptr, *ptr.add(1), *ptr.add(2));
-
-    ptr = ptr.add(3);
-    let mut next = ptr.add(*ptr.add(1) as usize + 2);
-    print!("{ptr:p}: ");
-    while heap_ptr.offset_from(ptr) > 0 {
-        print!("{:#x} ", *ptr);
-        ptr = ptr.add(1);
-
-        if next.offset_from(ptr) <= 0 {
-            println!("");
-            next = ptr.add(*ptr.add(1) as usize + 2);
-            print!("{ptr:p}: ");
+unsafe fn print_heap() {
+    let major_lower = *HEAP_START.add(1) as *const u64;
+    let major_upper = *HEAP_START.add(3) as *const u64;
+    let minor_lower = HEAP_START.add(HEAP_META_SIZE);
+    let minor_upper = *HEAP_START as *const u64;
+    println!("Heap Metadata: ");
+    print!("{:p}: ", HEAP_START);
+    for i in 0..HEAP_META_SIZE {
+        print!("{:#x}  ", *HEAP_START.add(i));
+    }
+    println!("");
+    println!("Nursery:");
+    let mut ptr = minor_lower;
+    while minor_upper.offset_from(ptr) > 0 {
+        let len = *ptr.add(1) as usize + 2;
+        print!("{:p}: ", ptr);
+        for i in 0..len {
+            print!("{:#x}  ", *ptr.add(i));
         }
+        println!("");
+        ptr = ptr.add(len);
+    }
+    println!("Major heap:");
+    let mut ptr = major_lower;
+    while major_upper.offset_from(ptr) > 0 {
+        let len = *ptr.add(1) as usize + 2;
+        print!("{:p}: ", ptr);
+        for i in 0..len {
+            print!("{:#x}  ", *ptr.add(i));
+        }
+        println!("");
+        ptr = ptr.add(len);
     }
     println!("End heap");
 }
@@ -380,12 +602,33 @@ pub fn add_interface_calls(
         ; jmp rax
         ; ret
     );
-    let snek_gc_lbl = ops.new_dynamic_label();
-    lbls.insert(Label::new(Some("snek_gc")), snek_gc_lbl);
+    let snek_major_gc_lbl = ops.new_dynamic_label();
+    lbls.insert(Label::new(Some("snek_major_gc")), snek_major_gc_lbl);
     dynasm!(ops
         ; .arch x64
-        ; =>snek_gc_lbl
-        ; mov rax, QWORD snek_gc as _
+        ; =>snek_major_gc_lbl
+        ; mov rax, QWORD snek_major_gc as _
+        ; jmp rax
+        ; ret
+    );
+    let snek_minor_gc_lbl = ops.new_dynamic_label();
+    lbls.insert(Label::new(Some("snek_minor_gc")), snek_minor_gc_lbl);
+    dynasm!(ops
+        ; .arch x64
+        ; =>snek_minor_gc_lbl
+        ; mov rax, QWORD snek_minor_gc as _
+        ; jmp rax
+        ; ret
+    );
+    let snek_write_barrier_lbl = ops.new_dynamic_label();
+    lbls.insert(
+        Label::new(Some("snek_write_barrier")),
+        snek_write_barrier_lbl,
+    );
+    dynasm!(ops
+        ; .arch x64
+        ; =>snek_write_barrier_lbl
+        ; mov rax, QWORD snek_write_barrier as _
         ; jmp rax
         ; ret
     );
@@ -450,10 +693,9 @@ fn snek_str(val: i64, seen: &mut HashSet<i64>) -> String {
     } else if val == NIL_VAL {
         "nil".to_string()
     } else if val & 1 == 1 {
-        if seen.contains(&val) {
-            return "(list <cyclic>)".to_string();
+        if !seen.insert(val) {
+            return "[...]".to_string();
         }
-        seen.insert(val);
         let addr = (val - 1) as *const i64;
         let count = unsafe { *addr.add(1) } as usize;
         let mut v: Vec<i64> = vec![0; count];
@@ -461,16 +703,16 @@ fn snek_str(val: i64, seen: &mut HashSet<i64>) -> String {
             v[i] = unsafe { *addr.add(i + 2) };
         }
         let result = format!(
-            "(list {})",
+            "[{}]",
             v.iter()
                 .map(|x| snek_str(*x, seen))
                 .collect::<Vec<String>>()
-                .join(" ")
+                .join(", ")
         );
         seen.remove(&val);
         return result;
     } else {
-        format!("Unknown value: {}", val)
+        format!("unknown value: {}", val)
     }
 }
 
