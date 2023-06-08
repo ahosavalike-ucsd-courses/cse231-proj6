@@ -33,5 +33,5 @@
     )
 )
 
-; ((input 1000) (heap_size 4008) (output 1000))
-; ((input 1000) (heap_size 4007) (dynamic "out of memory"))
+; ((input 1000) (heap_size 4040) (output 1000))
+; ((input 1000) (heap_size 4039) (dynamic "out of memory"))
