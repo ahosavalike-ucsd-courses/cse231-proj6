@@ -16,5 +16,5 @@
 )
 
 ; (output "[1, 2, 4]" "[1, 2, 3]" "[0, 0, 0, 0, 0]")
-; ((input false) (heap_size 10) (output "[1, 2, 4]" "[1, 2, 3]" "[0, 0, 0, 0, 0]"))
-; ((input false) (heap_size 9) (dynamic "out of memory"))
+; ((input false) (heap_size 11) (output "[1, 2, 4]" "[1, 2, 3]" "[0, 0, 0, 0, 0]"))
+; ((input false) (heap_size 10) (dynamic "out of memory"))
