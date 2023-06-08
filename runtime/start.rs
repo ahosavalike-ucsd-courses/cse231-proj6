@@ -496,16 +496,9 @@ unsafe fn root_set(
         live_minor_major_refs(&mut major_set, *minor_heap_addr);
     }
 
-    // Check for data referred by live elements in the nursery
-    let major_stack_refs: HashMap<*const u64, *const u64> =
-        HashMap::from_iter(major_set.clone().drain());
-
     // Track references from REMEMBERED set just like stack references
-    for (_, major_heap_lst) in &major_stack_refs {
-        for offset in (*REMEMBERED_MAP)
-            .get(major_heap_lst)
-            .unwrap_or(&HashSet::new())
-        {
+    for (major_heap_lst, offsets) in &*REMEMBERED_MAP {
+        for offset in offsets {
             let major_ptr = (*major_heap_lst).add(*offset);
             let minor_lst = (*major_ptr - 1) as *const u64;
             minor_set.insert((major_ptr, minor_lst));
