@@ -6,7 +6,8 @@
 (rec input)
 
 ; ((input 10) (output 0))
-; ((input 10) (heap_size 9) (dynamic "out of memory"))
-; ((input 10) (heap_size 10) (output 0))
-; ((input 100) (heap_size 10) (output 0))
+; ((input 10) (heap_size 10) (dynamic "out of memory"))
+; ((input 10) (heap_size 11) (output 0))
+; ((input 100) (heap_size 10) (dynamic "out of memory"))
+; ((input 100) (heap_size 11) (output 0))
 ; ((input 100) (heap_size 100) (output 0))
