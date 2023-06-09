@@ -16,7 +16,13 @@ success_compile_tests! {
 	{
 		name: profile_even_odd,
 		file: "even_odd.snek",
-		input: "1000000",
-		expected: "1000000\ntrue\ntrue",
+		input: "1397541",
+		expected: "1397541\nfalse\nfalse",
+	},
+	{
+		name: profile_loopsum,
+		file: "loopsum.snek",
+		input: "2000000000",
+		expected: "2000000000",
 	},
 }

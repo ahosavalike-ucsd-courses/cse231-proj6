@@ -1,0 +1,7 @@
+(let ((i 0) (out 0)) (loop (
+    if (> (set! i (+ i 1)) input) (break out) (
+        set! out (+ out 1)
+    )
+)))
+
+; ((input 2000000000) (output 2000000000))
