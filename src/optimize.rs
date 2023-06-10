@@ -212,9 +212,7 @@ fn overflow_binop(op: &Op2, n1: i64, n2: i64, default: Expr) -> Expr {
         Op2::Times => i64::overflowing_mul,
         _ => always_true,
     }(n1, n2);
-    if o {
-        default
-    } else if n.overflowing_mul(2).1 {
+    if o || n.overflowing_mul(2).1 {
         default
     } else {
         Num(n)
