@@ -1,0 +1,19 @@
+(fun (isodd n)
+  (if (< n 0)
+      (isodd (- 0 n))
+      (if (= n 0)
+          false
+          (iseven (sub1 n))
+      )
+  )
+)
+(fun (iseven n)
+  (if (= n 0)
+      true
+      (isodd (sub1 n))
+  )
+)
+
+(let ((i 0)) (loop (if (> (set! i (+ i 1)) 100) (break (iseven input)) (iseven input))))
+; ((input 10) (output true))
+; ((input 9) (output false))

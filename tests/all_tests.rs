@@ -15,14 +15,25 @@ success_compile_tests! {
 	},
 	{
 		name: profile_even_odd,
-		file: "even_odd.snek",
+		file: "gs_even_odd.snek",
 		input: "1397541",
-		expected: "1397541\nfalse\nfalse",
+		expected: "false",
 	},
 	{
 		name: profile_loopsum,
 		file: "loopsum.snek",
 		input: "2000000000",
 		expected: "2000000000",
+	},
+	{
+		name: profile_complex_expr,
+		file: "gs_complex_expr.snek",
+		expected: "1000000001",
+	},
+	{
+		name: profile_simple_calc,
+		file: "gs_simple_calc.snek",
+		input: "10",
+		expected: "1000000001",
 	},
 }
