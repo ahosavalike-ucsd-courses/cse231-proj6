@@ -7,7 +7,7 @@ use Type::*;
 
 use dynasmrt::DynamicLabel;
 
-use im::HashSet;
+use im::{HashSet, hashset};
 use im::{hashmap, HashMap};
 
 pub const TRUE_VAL: i64 = 7;
@@ -17,6 +17,21 @@ pub const NIL_VAL: i64 = 1;
 pub const TRUE: Arg64 = Imm(TRUE_VAL as i32);
 pub const FALSE: Arg64 = Imm(FALSE_VAL as i32);
 pub const NIL: Arg64 = Imm(NIL_VAL as i32);
+
+fn nonovars(e: &Expr, acc: &HashSet<String>) -> HashSet<String> {
+    let svm = |e| nonovars(e, acc);
+    let svf = |a: HashSet<String>, e: &Expr| a.union(nonovars(e, acc));
+    match e {
+        Expr::Set(x, _) => acc.update(x.clone()),
+        Expr::List(es) => es.iter().fold(acc.clone(), svf),
+        Expr::UnOp(_, e) | Expr::Loop(e) | Expr::Break(e) | Expr::FnDefn(_, _, e) => svm(e),
+        Expr::BinOp(_, e1, e2) | Expr::SizedList(e1, e2) => svf(svf(acc.clone(), e1), e2),
+        Expr::If(e1, e2, e3) | Expr::SetLst(e1, e2, e3) => svf(svf(svf(acc.clone(), e1), e2), e3),
+        Expr::Let(es, e) => svf(es.iter().map(|(_, e)| e).fold(acc.clone(), svf), e),
+        Expr::Block(es) | Expr::FnCall(_, es) => es.iter().fold(acc.clone(), svf),
+        _ => acc.clone(),
+    }
+}
 
 fn depth(e: &Expr) -> i32 {
     match e {
@@ -879,8 +894,11 @@ pub fn compile_expr(e: &Expr, co: &Context, com: &mut ContextMut) -> Vec<Instr> 
         }
         Expr::Block(es) => {
             let mut co = co.clone();
-            for (_,v) in co.env.iter_mut() {
-                v.vtype = None;
+            let nonovars = nonovars(e, &hashset![]);
+            for (x,v) in co.env.iter_mut() {
+                if nonovars.contains(x) {
+                    v.vtype = None;
+                }
             }
             // Only last expression in the block can be a tail position
             let co_rax = &co.modify_target(None).modify_tail(false);
@@ -900,6 +918,13 @@ pub fn compile_expr(e: &Expr, co: &Context, com: &mut ContextMut) -> Vec<Instr> 
             }
         }
         Expr::Loop(e) => {
+            let mut co = co.clone();
+            let nonovars = nonovars(e, &hashset![]);
+            for (x,v) in co.env.iter_mut() {
+                if nonovars.contains(x) {
+                    v.vtype = None;
+                }
+            }
             // Begin and end label have same label index
             let begin_loop = com.label("begin_loop");
             let end_loop = com.label("end_loop");
