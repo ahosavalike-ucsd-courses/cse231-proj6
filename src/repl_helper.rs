@@ -4,7 +4,7 @@ use std::collections::HashSet;
 use std::mem;
 
 use crate::compiler::*;
-use crate::repl::{HEAP_META_SIZE, HEAP_START, REMEMBERED_MAP};
+use crate::repl::{DEFINE_STACK, HEAP_META_SIZE, HEAP_START, REMEMBERED_MAP};
 use crate::structs::*;
 
 pub extern "C" fn snek_error_exit(errcode: i64) {
@@ -382,12 +382,27 @@ unsafe fn root_set(
 
     for (stack_ptr, val) in stack.iter_val() {
         if val & 3 == 1 && val != 1 {
-            let ptr = val as *const u64;
+            let ptr = (val - 1) as *const u64;
             if ptr.offset_from(major_lower) >= 0 && major_upper.offset_from(ptr) > 0 {
-                major_set.insert((stack_ptr, (val - 1) as *const u64));
+                major_set.insert((stack_ptr, ptr));
             }
             if ptr.offset_from(minor_lower) >= 0 && minor_upper.offset_from(ptr) > 0 {
-                minor_set.insert((stack_ptr, (val - 1) as *const u64));
+                minor_set.insert((stack_ptr, ptr));
+            }
+        }
+    }
+
+    let define_stack_ptr = (*DEFINE_STACK).as_ptr();
+    for (i, val) in (*DEFINE_STACK).iter().enumerate() {
+        let val = *val;
+        if val & 3 == 1 && val != 1 {
+            let ptr = (val - 1) as *const u64;
+            let stack_ptr = define_stack_ptr.add(i);
+            if ptr.offset_from(major_lower) >= 0 && major_upper.offset_from(ptr) > 0 {
+                major_set.insert((stack_ptr, ptr));
+            }
+            if ptr.offset_from(minor_lower) >= 0 && minor_upper.offset_from(ptr) > 0 {
+                minor_set.insert((stack_ptr, ptr));
             }
         }
     }
@@ -413,7 +428,6 @@ unsafe fn root_set(
         live_minor_minor_refs(&mut minor_set, minor_list);
     }
 
-    // TODO: Also check define_stack
     (major_set, minor_set)
 }
 
