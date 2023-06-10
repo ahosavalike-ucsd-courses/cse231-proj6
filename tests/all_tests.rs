@@ -1118,6 +1118,12 @@ runtime_error_tests! {
 		expected: "invalid argument",
 	},
 	{
+		name: type_check_loop_6,
+		file: "type_check_loop.snek",
+		input: "10",
+		expected: "invalid argument",
+	},
+	{
 		name: loop_expr0_12,
 		file: "loop_expr0.snek",
 		input: "5",
