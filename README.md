@@ -1,43 +1,23 @@
-# Egg Eater / Forest Flame
+# Green Snake
 
-```
-+-------------+->; For func2/After stack shift
-|  live size  |  [rsp-48]/[rsp] ; Live data in stack
-| func 1 args |  [rsp-48]/[rsp+8]
-|      2      |  [rsp-40]/[rsp+16]
-+-------------+
-|      1      |  [rsp-32]/[rsp+24]
-| func 2 temp |  [rsp-24]/[rsp+32]
-|      3      |  [rsp-16]/[rsp+40]
-|   /align/   |  [rsp-8]
-+-------------+
-|   ret ptr   |  [rsp] ; At call to func2
-+-------------+->; For func1/After stack shift
-|  live size  |  [rsp-72]/[rsp]
-|      1      |  [rsp-64]/[rsp+8]
-| func 2 args |  [rsp-56]/[rsp+16]
-|      3      |  [rsp-48]/[rsp+24]
-+-------------+
-|      1      |  [rsp-40]/[rsp+32]
-|      2      |  [rsp-32]/[rsp+40]
-| func 3 temp |  [rsp-24]/[rsp+48]
-|      4      |  [rsp-16]/[rsp+56]
-|      5      |  [rsp-8]/[rsp+64]
-+-------------+
-|   ret ptr   |  [rsp] ; At call to func1
-+-------------+->; For main/After stack shift
-|  live size  |  [rsp-56]/[rsp]
-|    input    |  [rsp-48]/[rsp+8]
-|      1      |  [rsp-40]/[rsp+16]
-| main 2 temp |  [rsp-32]/[rsp+24]
-|      3      |  [rsp-24]/[rsp+32]
-|   /align/   |  [rsp-16]/[rsp+40]
-+-------------+
-|     ---     |  [rsp-8]
-|   ret ptr   |  [rsp] ; At call to main
-+-------------+
-```
+Two additional optimizations are implemented for a total of three, viz.,  Constant Folding, Constant Propagation and Dead Code Elimination.
 
-## Heap layout
+## Constant Folding and Constant Propagation
 
-The first word tracks starting of free heap space. The second word denotes the end of the heap. The third word tracks the Rsp base.
+These are implemented in `src/optimize.rs` as an AST -> AST transformation. Variables that are `set!` on are never optimized. The rest of the folding and propagation happens until saturation.
+
+Overflow conditions are tracked and optimizations are undone, leaving it to the compiler to generate runtime errors.
+
+## Dead Code Elimination
+
+This happens in two parts. The `src/optimize.rs` does as much as possible on the AST, such as eliminating if-then-else branches as necessary. The original compiler already tracks type information and eliminates type checks as much as possible outside blocks.
+
+## Notes on performance
+
+This compiler implements all the extensions from all assignments, which means that there is additional code that the reference implementation might not generate, like the write barriers for nursery GC and uses a different stack layout with stack frames which means there will be two copies of arguments generated. This means that the baseline might not be an accurate reflection of the baseline of this version of the compiler.
+
+## Tests that do very well
+
+### Tail calls
+
+Since this compiler also implements proper tail calls, we can execute recursions in tail positions in fixed space which will trigger a stack overflow on the reference compiler.
