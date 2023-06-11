@@ -1,3 +1,7 @@
+# Important note:
+
+This implementation fails `cbn` tests only because I did not pass them during Forest Flame either and could not fix it since the tests were not released. It also fails a couple of other tests rightly so, which run out of memory due to the implementation of Nursery Garbage collection. Please look at my 8th submission [on Gradescope](https://www.gradescope.com/courses/528266/assignments/2937288/submissions/183113349) for a primitive implementation that passes all tests, but only does basic optimizations.
+
 # Green Snake
 
 Two additional optimizations are implemented for a total of four, viz.,  Constant Folding, Constant Propagation, Dead Code Elimination and proper tail calls/TCO.
