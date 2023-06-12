@@ -1,5 +1,0 @@
-(index (list 1 2 3) input)
-; (dynamic "invalid argument")
-; ((input 0) (dynamic "out of range"))
-; ((input 4) (dynamic "out of range"))
-; ((input 2) (output 2))

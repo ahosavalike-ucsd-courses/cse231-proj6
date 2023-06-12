@@ -453,7 +453,7 @@ pub fn compile_expr(e: &Expr, co: &Context, com: &mut ContextMut) -> Vec<Instr> 
                         }
                         Some(List) => instrs.extend(vec![
                             Cmp(ToReg(Rax, NIL)),
-                            Mov(ToReg(Rdi, Imm(40))),
+                            Mov(ToReg(Rdi, Imm(25))),
                             JumpI(Jump::Z(snek_error.clone())),
                         ]),
                         _ => {
@@ -478,12 +478,13 @@ pub fn compile_expr(e: &Expr, co: &Context, com: &mut ContextMut) -> Vec<Instr> 
                             return instrs;
                         }
                     }
-                    // 1 <= Index(snek) <= length(int)
+                    // 1 <= Index(snek) <= length(int) after adding 1
                     instrs.extend(vec![
                         // Remove tag from address
                         Sub(ToReg(Rax, Imm(1))),
-                        // Convert index from snek to number
+                        // Convert index from snek to 1 based number
                         Sar(Rbx, 1),
+                        Add(ToReg(Rbx, Imm(1))),
                         // Error code index out of bounds
                         Mov(ToReg(Rdi, Imm(40))),
                         // Test upper bound
@@ -776,7 +777,7 @@ pub fn compile_expr(e: &Expr, co: &Context, com: &mut ContextMut) -> Vec<Instr> 
                 }
                 Some(List) => instrs.extend(vec![
                     Cmp(ToReg(Rax, NIL)),
-                    Mov(ToReg(Rdi, Imm(40))),
+                    Mov(ToReg(Rdi, Imm(25))),
                     JumpI(Jump::Z(snek_error.clone())),
                 ]),
                 _ => {
@@ -843,9 +844,10 @@ pub fn compile_expr(e: &Expr, co: &Context, com: &mut ContextMut) -> Vec<Instr> 
                 Mov(ToReg(Rax, OReg(Rdi))),
                 // Remove tag from address
                 Sub(ToReg(Rbx, Imm(1))),
-                // Convert index from snek to number
+                // Convert index from snek to 1 based number
                 Sar(Rax, 1),
-                // 1 <= Index(snek) <= length(int) test
+                Add(ToReg(Rax, Imm(1))),
+                // 1 <= Index(snek) <= length(int) test after increment
                 // Error code index out of bounds
                 Mov(ToReg(Rdi, Imm(40))),
                 // Test upper bound
@@ -1016,10 +1018,10 @@ pub fn compile_expr(e: &Expr, co: &Context, com: &mut ContextMut) -> Vec<Instr> 
                 // No need to copy if already at the right place
                 if co.si != diff {
                     // Copy top to bottom or bottom to top depending on diff and co.si
-                    let rng = if co.si > diff {
-                        0..args.len() as i32
+                    let rng: Vec<i32> = if co.si > diff {
+                        (0..args.len() as i32).collect()
                     } else {
-                        (args.len() as i32 - 1)..-1
+                        (0..args.len() as i32).rev().collect()
                     };
                     for i in rng {
                         instrs.push(Mov(ToReg(

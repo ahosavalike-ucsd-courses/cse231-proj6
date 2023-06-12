@@ -1,0 +1,14 @@
+(fun (q y) (let ((x (vec 1 2 3)))
+    (vec-set! x y x)
+))
+
+(block
+    (q 1)
+    (print (q 2))
+    (gc)
+    (q (gc))
+)
+
+; (output "[1, 2, [...]]" "[[...], 2, 3]")
+; ((heap_size 5) (output "[1, 2, [...]]" "[[...], 2, 3]"))
+; ((input false) (heap_size 4) (dynamic "out of memory"))

@@ -1,3 +1,0 @@
-(fun (f) (list 1))
-(isbool (f))
-; (output false)

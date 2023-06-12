@@ -1,0 +1,37 @@
+; Anthony
+(let ((x (vec 4 nil)) (y (vec 5 nil)))
+    (block
+        (let ((curr_x x) (curr_y y))
+            (block
+                (let ((i 0))
+                    (loop 
+                        (if (< i input)
+                            (block 
+                                (vec-set! curr_x 1 (vec 4 nil))
+                                (set! curr_x (vec-get curr_x 1))
+                                (set! i (add1 i))
+                            )
+                            (break i)
+                        )
+                    )
+                )
+                (set! x nil)
+                (let ((i 0))
+                    (loop 
+                        (if (< i input)
+                            (block 
+                                (vec-set! curr_y 1 (vec 5 nil))
+                                (set! curr_y (vec-get curr_y 1))
+                                (set! i (add1 i))
+                            )
+                            (break i)
+                        )
+                    )
+                )
+            )
+        )
+    )
+)
+
+; ((input 1000) (heap_size 4008) (output 1000))
+; ((input 1000) (heap_size 4007) (dynamic "out of memory"))

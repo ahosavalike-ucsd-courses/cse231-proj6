@@ -25,9 +25,9 @@ pub fn parse_top_level(s: &Sexp) -> (Vec<Expr>, Expr) {
 
 pub fn parse_expr(s: &Sexp) -> Expr {
     let keywords = &vec![
-        "add1", "sub1", "let", "isnum", "isbool", "islist", "if", "loop", "break", "set!", "block",
-        "input", "print", "fun", "define", "nil", "list", "index", "slist", "len", "+", "-", "*",
-        "/", "<", ">", ">=", "<=", "=", "==",
+        "add1", "sub1", "let", "isnum", "isbool", "isvec", "if", "loop", "break", "set!",
+        "vec-set!", "block", "input", "print", "fun", "define", "nil", "vec", "vec-get",
+        "make-vec", "vec-len", "+", "-", "*", "/", "<", ">", ">=", "<=", "=", "==",
     ];
     match s {
         // Num
@@ -53,7 +53,7 @@ pub fn parse_expr(s: &Sexp) -> Expr {
                 Expr::Block(es.into_iter().map(parse_expr).collect())
             }
             // List
-            [Sexp::Atom(S(op)), es @ ..] if op == "list" => {
+            [Sexp::Atom(S(op)), es @ ..] if op == "vec" => {
                 if es.len() == 0 {
                     Expr::Nil
                 } else {
@@ -99,9 +99,9 @@ pub fn parse_expr(s: &Sexp) -> Expr {
                         "sub1" => Op1::Sub1,
                         "isnum" => Op1::IsNum,
                         "isbool" => Op1::IsBool,
-                        "islist" => Op1::IsList,
+                        "isvec" => Op1::IsList,
                         "print" => Op1::Print,
-                        "len" => Op1::Len,
+                        "vec-len" => Op1::Len,
                         _ => panic!("Invalid"),
                     },
                     Box::new(parse_expr(e)),
@@ -115,7 +115,7 @@ pub fn parse_expr(s: &Sexp) -> Expr {
                 Expr::Set(x.to_string(), Box::new(parse_expr(b)))
             }
             // Set! List
-            [Sexp::Atom(S(op)), lst, idx, val] if op == "set!" => {
+            [Sexp::Atom(S(op)), lst, idx, val] if op == "vec-set!" => {
                 let lst = parse_expr(lst);
                 if let Expr::Var(x) = &lst {
                     if x == "input" {
@@ -152,7 +152,7 @@ pub fn parse_expr(s: &Sexp) -> Expr {
                 )
             }
             // Sized list
-            [Sexp::Atom(S(op)), l, r] if op == "slist" => {
+            [Sexp::Atom(S(op)), l, r] if op == "make-vec" => {
                 Expr::SizedList(Box::new(parse_expr(l)), Box::new(parse_expr(r)))
             }
             // Binary Operators
@@ -168,7 +168,7 @@ pub fn parse_expr(s: &Sexp) -> Expr {
                     "<" => Op2::Less,
                     ">=" => Op2::GreaterEqual,
                     "<=" => Op2::LessEqual,
-                    "index" => Op2::Index,
+                    "vec-get" => Op2::Index,
                     _ => panic!("Invalid {op}"),
                 },
                 Box::new(parse_expr(l)),

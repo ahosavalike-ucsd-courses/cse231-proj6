@@ -1,2 +1,0 @@
-(let ((x (list 1 2 3))) (index (set! x 3 5) 3))
-; (output 5)

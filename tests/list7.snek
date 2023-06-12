@@ -1,3 +1,0 @@
-(fun (n) nil)
-(index (n) 1)
-; (dynamic "out of range")

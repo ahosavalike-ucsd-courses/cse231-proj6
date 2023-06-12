@@ -1,3 +1,0 @@
-(fun (update lst i x) (set! lst i x))
-(update (list 1 2 3) 2 5)
-; (output "(list 1 5 3)")
