@@ -416,6 +416,11 @@ success_tests! {
 		expected: "18",
 	},
 	{
+		name: cbn_104,
+		file: "cbn.snek",
+		expected: "[1, 0]",
+	},
+	{
 		name: binding_chain_1,
 		file: "binding_chain.snek",
 		expected: "3",
