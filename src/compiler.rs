@@ -935,6 +935,11 @@ pub fn compile_expr(e: &Expr, co: &Context, com: &mut ContextMut) -> Vec<Instr> 
                     v.vtype = None;
                 }
             }
+            for (x,v) in com.env.iter_mut() {
+                if nonovars.contains(x) {
+                    v.vtype = None;
+                }
+            }
             // Only last expression in the block can be a tail position
             let co_rax = &co.modify_target(None).modify_tail(false);
 
@@ -956,6 +961,11 @@ pub fn compile_expr(e: &Expr, co: &Context, com: &mut ContextMut) -> Vec<Instr> 
             let mut co = co.clone();
             let nonovars = nonovars(e, &hashset![]);
             for (x,v) in co.env.iter_mut() {
+                if nonovars.contains(x) {
+                    v.vtype = None;
+                }
+            }
+            for (x,v) in com.env.iter_mut() {
                 if nonovars.contains(x) {
                     v.vtype = None;
                 }
@@ -1041,10 +1051,10 @@ pub fn compile_expr(e: &Expr, co: &Context, com: &mut ContextMut) -> Vec<Instr> 
                 // No need to copy if already at the right place
                 if co.si != diff {
                     // Copy top to bottom or bottom to top depending on diff and co.si
-                    let rng = if co.si > diff {
-                        0..args.len() as i32
+                    let rng: Vec<i32> = if co.si > diff {
+                        (0..args.len() as i32).collect()
                     } else {
-                        (args.len() as i32 - 1)..-1
+                        (0..args.len() as i32).rev().collect()
                     };
                     for i in rng {
                         instrs.push(Mov(ToReg(
