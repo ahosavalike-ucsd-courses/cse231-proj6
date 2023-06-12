@@ -986,4 +986,3 @@ static_error_tests! {
 		expected: "Unbound variable identifier y",
 	},
 }
-

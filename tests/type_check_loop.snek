@@ -1,0 +1,7 @@
+(let ((i 0) (out 0)) (loop (
+    if (> (set! i (+ i 1)) input) (break out) (
+        set! i false
+    )
+)))
+
+; ((input 10) (dynamic "invalid argument"))
