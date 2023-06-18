@@ -58,5 +58,5 @@
     true
 )
 
-; ((input 1000) (heap_size 1002) (output true))
-; ((input 1000) (heap_size 1001) (dynamic "out of memory"))
+; ((input 1000) (heap_size 1113) (output true))
+; ((input 1000) (heap_size 1112) (dynamic "out of memory"))
