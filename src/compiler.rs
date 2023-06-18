@@ -1018,10 +1018,10 @@ pub fn compile_expr(e: &Expr, co: &Context, com: &mut ContextMut) -> Vec<Instr> 
                 // No need to copy if already at the right place
                 if co.si != diff {
                     // Copy top to bottom or bottom to top depending on diff and co.si
-                    let rng: Vec<i32> = if co.si > diff {
-                        (0..args.len() as i32).collect()
+                    let rng = if co.si > diff {
+                        Box::new(0..args.len() as i32) as Box<dyn Iterator<Item = i32>>
                     } else {
-                        (0..args.len() as i32).rev().collect()
+                        Box::new((0..args.len() as i32).rev())
                     };
                     for i in rng {
                         instrs.push(Mov(ToReg(
