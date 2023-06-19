@@ -440,6 +440,29 @@ impl Iterator for StackIter {
     }
 }
 
+// Remove stale entries from REMEMBERED MAP
+unsafe fn clean_remembered_map() {
+    let minor_lower = HEAP_START.add(HEAP_META_SIZE);
+    let minor_upper = *HEAP_START as *const u64;
+    for (lst, offsets) in (*REMEMBERED_MAP).iter_mut() {
+        for offset in offsets.clone().iter() {
+            let val = *lst.add(*offset);
+
+            if val & 3 != 1 || val == 1 {
+                // Not a valid pointer
+                offsets.remove(offset);
+                continue;
+            }
+            let val = (val - 1) as *const u64;
+            if val.offset_from(minor_lower) < 0 || minor_upper.offset_from(val) < 0 {
+                // Not in Nursery
+                offsets.remove(offset);
+                continue;
+            }
+        }
+    }
+}
+
 // Find any major references given a minor address
 unsafe fn live_minor_major_refs(
     acc: &mut HashSet<(*const u64, *const u64)>,
@@ -497,6 +520,7 @@ unsafe fn root_set(
         }
     }
 
+    clean_remembered_map();
     // Track references from REMEMBERED set just like stack references
     for (major_heap_lst, offsets) in &*REMEMBERED_MAP {
         for offset in offsets {
