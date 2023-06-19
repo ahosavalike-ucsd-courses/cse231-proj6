@@ -129,12 +129,12 @@ fn print_result(result: i64) -> i64 {
 }
 
 #[export_name = "\x01snek_write_barrier"]
-pub unsafe fn snek_write_barrier(lst: u64, major_heap_addr: *const u64, val: u64) -> u64 {
-    let val_ptr = val as *const u64;
+pub unsafe fn snek_write_barrier(lst: u64, major_heap_write_addr: *const u64, val: u64) -> u64 {
+    let lst = (lst - 1) as *const u64;
+    let val_ptr = (val - 1) as *const u64;
     let minor_lower = HEAP_START.add(HEAP_META_SIZE);
     let minor_upper = *HEAP_START as *const u64;
-    let lst = (lst - 1) as *const u64;
-    let offset = major_heap_addr.offset_from(lst) as usize;
+    let offset = major_heap_write_addr.offset_from(lst) as usize;
     if val_ptr.offset_from(minor_lower) >= 0 && minor_upper.offset_from(val_ptr) > 0 {
         if !(*REMEMBERED_MAP).contains_key(&lst) {
             (*REMEMBERED_MAP).insert(lst, HashSet::new());
@@ -480,20 +480,14 @@ unsafe fn root_set(
 
     for (stack_ptr, val) in stack.iter_val() {
         if val & 3 == 1 && val != 1 {
-            let ptr = val as *const u64;
+            let ptr = (val - 1) as *const u64;
             if ptr.offset_from(major_lower) >= 0 && major_upper.offset_from(ptr) > 0 {
-                major_set.insert((stack_ptr, (val - 1) as *const u64));
+                major_set.insert((stack_ptr, ptr));
             }
             if ptr.offset_from(minor_lower) >= 0 && minor_upper.offset_from(ptr) > 0 {
-                minor_set.insert((stack_ptr, (val - 1) as *const u64));
+                minor_set.insert((stack_ptr, ptr));
             }
         }
-    }
-
-    // Check for data referred by live elements in the nursery to major heap
-    clear_gc_minor();
-    for (_, minor_heap_addr) in &minor_set {
-        live_minor_major_refs(&mut major_set, *minor_heap_addr);
     }
 
     // Track references from REMEMBERED set just like stack references
@@ -503,6 +497,12 @@ unsafe fn root_set(
             let minor_lst = (*major_ptr - 1) as *const u64;
             minor_set.insert((major_ptr, minor_lst));
         }
+    }
+
+    // Check for data referred by live elements in the nursery to major heap
+    clear_gc_minor();
+    for (_, minor_heap_addr) in &minor_set {
+        live_minor_major_refs(&mut major_set, *minor_heap_addr);
     }
 
     // Track recursive references from minor to minor
@@ -603,6 +603,7 @@ unsafe fn compact(heap_ptr: *const u64) {
 
 #[export_name = "\x01snek_print_heap"]
 unsafe fn print_heap() {
+    println!("=>Start heap");
     let major_lower = *HEAP_START.add(1) as *const u64;
     let major_upper = *HEAP_START.add(3) as *const u64;
     let minor_lower = HEAP_START.add(HEAP_META_SIZE);
@@ -635,7 +636,7 @@ unsafe fn print_heap() {
         println!("");
         ptr = ptr.add(len);
     }
-    println!("End heap");
+    println!("=>End heap");
 }
 
 /// A helper function that can called with the `(snek-printstack)` snek function. It prints the stack
