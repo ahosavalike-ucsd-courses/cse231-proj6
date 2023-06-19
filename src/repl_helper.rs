@@ -37,12 +37,19 @@ pub extern "C" fn snek_error_print(errcode: i64) {
     );
 }
 
-unsafe fn snek_write_barrier(lst: u64, major_heap_addr: *const u64, val: u64) -> u64 {
-    let val_ptr = val as *const u64;
+unsafe fn snek_write_barrier(lst: u64, major_heap_write_addr: *const u64, val: u64) -> u64 {
+    let lst = (lst - 1) as *const u64;
+    let offset = major_heap_write_addr.offset_from(lst) as usize;
+    if val & 3 != 1 || val == 1 {
+        if (*REMEMBERED_MAP).contains_key(&lst) {
+            // Remove from tracked set
+            (*REMEMBERED_MAP).get_mut(&lst).unwrap().remove(&offset);
+        }
+        return val;
+    }
+    let val_ptr = (val - 1) as *const u64;
     let minor_lower = HEAP_START.add(HEAP_META_SIZE);
     let minor_upper = *HEAP_START as *const u64;
-    let lst = (lst - 1) as *const u64;
-    let offset = major_heap_addr.offset_from(lst) as usize;
     if val_ptr.offset_from(minor_lower) >= 0 && minor_upper.offset_from(val_ptr) > 0 {
         if !(*REMEMBERED_MAP).contains_key(&lst) {
             (*REMEMBERED_MAP).insert(lst, HashSet::new());
@@ -407,12 +414,6 @@ unsafe fn root_set(
         }
     }
 
-    // Check for data referred by live elements in the nursery to major heap
-    clear_gc_minor();
-    for (_, minor_heap_addr) in &minor_set {
-        live_minor_major_refs(&mut major_set, *minor_heap_addr);
-    }
-
     // Track references from REMEMBERED set just like stack references
     for (major_heap_lst, offsets) in &*REMEMBERED_MAP {
         for offset in offsets {
@@ -420,6 +421,12 @@ unsafe fn root_set(
             let minor_lst = (*major_ptr - 1) as *const u64;
             minor_set.insert((major_ptr, minor_lst));
         }
+    }
+
+    // Check for data referred by live elements in the nursery to major heap
+    clear_gc_minor();
+    for (_, minor_heap_addr) in &minor_set {
+        live_minor_major_refs(&mut major_set, *minor_heap_addr);
     }
 
     // Track recursive references from minor to minor
@@ -520,6 +527,7 @@ unsafe fn compact(heap_ptr: *const u64) {
 
 #[allow(dead_code)]
 unsafe fn print_heap() {
+    println!("=>Start heap");
     let major_lower = *HEAP_START.add(1) as *const u64;
     let major_upper = *HEAP_START.add(3) as *const u64;
     let minor_lower = HEAP_START.add(HEAP_META_SIZE);
@@ -552,7 +560,7 @@ unsafe fn print_heap() {
         println!("");
         ptr = ptr.add(len);
     }
-    println!("End heap");
+    println!("=>End heap");
 }
 
 #[allow(dead_code)]
