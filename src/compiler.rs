@@ -1335,6 +1335,13 @@ pub fn compile_expr(e: &Expr, co: &Context, com: &mut ContextMut) -> Vec<Instr> 
 
             let count_valid = com.label("count_valid");
             let alloc_complete = com.label("alloc_complete");
+            let alloc_nursery = com.label("alloc_nursery");
+            let alloc_nursery_succ = com.label("alloc_nursery_succ");
+            let alloc_main_succ = com.label("alloc_main_succ");
+            let fill_list_nursery = com.label("fill_list_nursery");
+            let fill_list_main = com.label("fill_list_main");
+            com.index_used();
+
             instrs.extend(vec![
                 Cmp(ToReg(Rax, Imm(0))),
                 Mov(ToReg(Rdi, Imm(40))),
@@ -1358,12 +1365,6 @@ pub fn compile_expr(e: &Expr, co: &Context, com: &mut ContextMut) -> Vec<Instr> 
                 com,
             ));
 
-            let alloc_nursery = com.label("alloc_nursery");
-            let alloc_nursery_succ = com.label("alloc_nursery_succ");
-            let alloc_main_succ = com.label("alloc_main_succ");
-            let fill_list_nursery = com.label("fill_list_nursery");
-            let fill_list_main = com.label("fill_list_main");
-            com.index_used();
             instrs.extend(vec![
                 // Check heap availability
                 Mov(ToReg(
