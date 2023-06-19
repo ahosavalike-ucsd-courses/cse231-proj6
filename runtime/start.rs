@@ -131,10 +131,17 @@ fn print_result(result: i64) -> i64 {
 #[export_name = "\x01snek_write_barrier"]
 pub unsafe fn snek_write_barrier(lst: u64, major_heap_write_addr: *const u64, val: u64) -> u64 {
     let lst = (lst - 1) as *const u64;
+    let offset = major_heap_write_addr.offset_from(lst) as usize;
+    if val & 3 != 1 || val == 1 {
+        if (*REMEMBERED_MAP).contains_key(&lst) {
+            // Remove from tracked set
+            (*REMEMBERED_MAP).get_mut(&lst).unwrap().remove(&offset);
+        }
+        return val;
+    }
     let val_ptr = (val - 1) as *const u64;
     let minor_lower = HEAP_START.add(HEAP_META_SIZE);
     let minor_upper = *HEAP_START as *const u64;
-    let offset = major_heap_write_addr.offset_from(lst) as usize;
     if val_ptr.offset_from(minor_lower) >= 0 && minor_upper.offset_from(val_ptr) > 0 {
         if !(*REMEMBERED_MAP).contains_key(&lst) {
             (*REMEMBERED_MAP).insert(lst, HashSet::new());
