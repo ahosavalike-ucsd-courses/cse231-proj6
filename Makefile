@@ -14,10 +14,10 @@ run:
 tests/%.s: tests/%.snek src/main.rs
 	cargo run $(TARGET) -- $< tests/$*.s
 
-tests/%.run: tests/%.s runtime/start.rs
+tests/%.run: tests/%.s runtime/src/main.rs
 	nasm -f $(ARCH) tests/$*.s -o tests/$*.o
 	ar rcs tests/lib$*.a tests/$*.o
-	rustc $(TARGET) -g -L tests/ -lour_code:$* runtime/start.rs -o tests/$*.run
+	rustc $(TARGET) -g -L tests/ -lour_code:$* runtime/src/main.rs -o tests/$*.run
 
 .PHONY: test
 test:

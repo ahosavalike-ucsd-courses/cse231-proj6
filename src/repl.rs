@@ -13,13 +13,21 @@ use crate::parser::*;
 use crate::repl_helper::*;
 use crate::structs::*;
 
+// Initial define stack size low to see reallocations
+pub static mut DEFINE_STACK: *mut Vec<u64> = std::ptr::null::<Vec<u64>>() as *mut _;
 static OPS: Lazy<Mutex<Assembler>> = Lazy::new(|| Mutex::new(Assembler::new().unwrap()));
 static COM: Lazy<Mutex<ContextMut>> = Lazy::new(|| Mutex::new(ContextMut::new()));
 static FUNCTIONS: Lazy<Mutex<HashMap<u64, FunDefEnv>>> = Lazy::new(|| Mutex::new(hashmap! {}));
 static LABELS: Lazy<Mutex<HashMap<Label, DynamicLabel>>> = Lazy::new(|| Mutex::new(hashmap! {}));
 static FUNCTION_INDEX: Mutex<u64> = Mutex::new(0);
 pub static mut HEAP_START: *const u64 = std::ptr::null();
-pub static HEAP_META_SIZE: usize = 3;
+pub static HEAP_META_SIZE: usize = 6;
+// List address -> vec of offsets
+pub static mut REMEMBERED_MAP: *mut std::collections::HashMap<
+    *const u64,
+    std::collections::HashSet<usize>,
+> = std::ptr::null::<std::collections::HashMap<*const u64, std::collections::HashSet<usize>>>()
+    as *mut _;
 
 // Compiles the initial stub for the function
 fn function_compile_initial(
@@ -132,23 +140,34 @@ fn eval(
 }
 
 pub fn repl(eval_input: Option<(&Vec<Expr>, &Expr, &str)>, heap_size: Option<usize>) {
-    // Initial define stack size low to see reallocations
-    let mut define_stack: Vec<u64> = vec![0; 1];
-
+    unsafe {
+        DEFINE_STACK = &mut Vec::new();
+        (*DEFINE_STACK).push(0);
+    }
     let heap_size = heap_size.unwrap_or(16384);
+    let nursery_size = heap_size / 10;
     let heap_len = HEAP_META_SIZE + heap_size;
     let mut heap = vec![0; heap_len];
-    // Placeholder for offset
+    // Nursery offset
     heap[0] = unsafe { heap.as_mut_ptr().add(HEAP_META_SIZE) } as u64;
-    // Placeholder for end of heap
-    heap[1] = unsafe { heap.as_mut_ptr().add(heap_len) } as u64;
+    // Nursery end of heap
+    heap[1] = unsafe { heap.as_mut_ptr().add(HEAP_META_SIZE + nursery_size) } as u64;
     // Placeholder for Rsp base
     heap[2] = 0;
+    // Main GC offset
+    heap[3] = heap[1];
+    // Main GC end of heap
+    heap[4] = unsafe { heap.as_mut_ptr().add(heap_len) } as u64;
+    // Length of nursery
+    heap[5] = nursery_size as u64;
 
-    unsafe { HEAP_START = heap.as_ptr() };
+    unsafe {
+        HEAP_START = heap.as_ptr();
+        REMEMBERED_MAP = &mut std::collections::HashMap::new();
+    }
 
     // 1 word for stack usage, 1 word for input
-    let mut co = Context::new(Some(define_stack.as_mut_ptr())).modify_si(2);
+    let mut co = Context::new(Some(unsafe { (*DEFINE_STACK).as_mut_ptr() })).modify_si(2);
 
     let mut input = (FALSE_VAL, Some(Type::Bool));
 
@@ -364,9 +383,12 @@ pub fn repl(eval_input: Option<(&Vec<Expr>, &Expr, &str)>, heap_size: Option<usi
         };
 
         // Increase define stack if needed
-        if co.dsi as usize >= define_stack.len() {
-            define_stack.resize(2 * define_stack.len(), 0);
-            co.define_stack = Some(define_stack.as_mut_ptr());
+        unsafe {
+            let len = (*DEFINE_STACK).len();
+            if co.dsi as usize >= len {
+                (*DEFINE_STACK).resize(2 * len, 0);
+                co.define_stack = Some((*DEFINE_STACK).as_mut_ptr());
+            }
         }
     }
 }

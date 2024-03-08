@@ -1,28 +1,69 @@
-use dynasmrt::{dynasm, x64::Assembler, AssemblyOffset, DynamicLabel, DynasmApi, DynasmLabelApi};
-use im::HashMap;
-use std::collections::HashSet;
-use std::mem;
+use std::collections::{HashMap, HashSet};
+use std::env;
+use std::iter::FromIterator;
 
-use crate::compiler::*;
-use crate::repl::{DEFINE_STACK, HEAP_META_SIZE, HEAP_START, REMEMBERED_MAP};
-use crate::structs::*;
+static mut HEAP_START: *const u64 = std::ptr::null();
+// Heap value address -> List address
+static mut REMEMBERED_MAP: *mut std::collections::HashMap<
+    *const u64,
+    std::collections::HashSet<usize>,
+> = std::ptr::null::<std::collections::HashMap<*const u64, std::collections::HashSet<usize>>>()
+    as *mut _;
+static HEAP_META_SIZE: usize = 6;
 
-pub extern "C" fn snek_error_exit(errcode: i64) {
-    // print error message according to writeup
-    eprintln!(
-        "an error ocurred {errcode}: {}",
-        match errcode {
-            1 => "invalid representation",
-            i if i >= 20 && i <= 29 => "invalid argument",
-            i if i >= 30 && i <= 39 => "overflow",
-            i if i == 40 => "index out of range",
-            _ => "",
-        }
-    );
-    std::process::exit(1);
+const TRUE_VAL: i64 = 7;
+const FALSE_VAL: i64 = 3;
+const NIL_VAL: i64 = 1;
+
+#[link(name = "our_code")]
+extern "C" {
+    // The \x01 here is an undocumented feature of LLVM that ensures
+    // it does not add an underscore in front of the name.
+    // Courtesy of Max New (https://maxsnew.com/teaching/eecs-483-fa22/hw_adder_assignment.html)
+    #[link_name = "\x01our_code_starts_here"]
+    fn our_code_starts_here(input: i64, buffer: *mut u64) -> i64;
 }
 
-pub extern "C" fn snek_error_print(errcode: i64) {
+fn deep_equal_recurse(l: i64, r: i64, seen: &mut HashSet<(i64, i64)>) -> bool {
+    // If not list, early exit
+    if l & 3 != 1 || r & 3 != 1 || l == NIL_VAL || r == NIL_VAL {
+        return l == r;
+    }
+
+    if seen.contains(&(l, r)) {
+        return true;
+    }
+    seen.insert((l, r));
+
+    let la = (l - 1) as *const i64;
+    let ra = (r - 1) as *const i64;
+    let lc = unsafe { *la.add(1) } as isize;
+    let rc = unsafe { *ra.add(1) } as isize;
+    // Check length
+    if lc != rc {
+        return false;
+    }
+    for i in 0..lc {
+        let ln = unsafe { *la.offset(i + 2) };
+        let rn = unsafe { *ra.offset(i + 2) };
+        if !deep_equal_recurse(ln, rn, seen) {
+            return false;
+        }
+    }
+    return true;
+}
+
+#[export_name = "\x01snek_deep_equal"]
+fn deep_equal(l: i64, r: i64) -> i64 {
+    if deep_equal_recurse(l, r, &mut HashSet::new()) {
+        TRUE_VAL
+    } else {
+        FALSE_VAL
+    }
+}
+
+#[export_name = "\x01snek_error"]
+pub extern "C" fn snek_error(errcode: i64) {
     // print error message according to writeup
     eprintln!(
         "an error ocurred {errcode}: {}",
@@ -35,9 +76,60 @@ pub extern "C" fn snek_error_print(errcode: i64) {
             _ => "",
         }
     );
+    std::process::exit(1);
 }
 
-unsafe fn snek_write_barrier(lst: u64, major_heap_write_addr: *const u64, val: u64) -> u64 {
+fn parse_input(input: &str) -> i64 {
+    // parse the input string into internal value representation
+    match input {
+        "true" => TRUE_VAL,
+        "false" | "" => FALSE_VAL,
+        _ => (input.parse::<i64>().expect("Invalid") as i64) << 1,
+    }
+}
+
+fn snek_str(val: i64, seen: &mut HashSet<i64>) -> String {
+    if val == TRUE_VAL {
+        "true".to_string()
+    } else if val == FALSE_VAL {
+        "false".to_string()
+    } else if val % 2 == 0 {
+        format!("{}", val >> 1)
+    } else if val == NIL_VAL {
+        "nil".to_string()
+    } else if val & 1 == 1 {
+        if !seen.insert(val) {
+            return "[...]".to_string();
+        }
+        let addr = (val - 1) as *const i64;
+        let count = unsafe { *addr.add(1) } as usize;
+        let mut v: Vec<i64> = vec![0; count];
+        for i in 0..count {
+            v[i] = unsafe { *addr.add(i + 2) };
+        }
+        let result = format!(
+            "[{}]",
+            v.iter()
+                .map(|x| snek_str(*x, seen))
+                .collect::<Vec<String>>()
+                .join(", ")
+        );
+        seen.remove(&val);
+        return result;
+    } else {
+        format!("unknown value: {}", val)
+    }
+}
+
+#[no_mangle]
+#[export_name = "\x01snek_print"]
+fn print_result(result: i64) -> i64 {
+    println!("{}", snek_str(result, &mut HashSet::new()));
+    return result;
+}
+
+#[export_name = "\x01snek_write_barrier"]
+pub unsafe fn snek_write_barrier(lst: u64, major_heap_write_addr: *const u64, val: u64) -> u64 {
     let lst = (lst - 1) as *const u64;
     let offset = major_heap_write_addr.offset_from(lst) as usize;
     if val & 3 != 1 || val == 1 {
@@ -62,7 +154,8 @@ unsafe fn snek_write_barrier(lst: u64, major_heap_write_addr: *const u64, val: u
     val
 }
 
-unsafe extern "C" fn snek_try_gc(
+#[export_name = "\x01snek_try_gc"]
+pub unsafe fn snek_try_gc(
     count: isize,
     curr_rbp: *const u64,
     curr_rsp: *const u64,
@@ -85,7 +178,8 @@ unsafe extern "C" fn snek_try_gc(
     }
 }
 
-unsafe extern "C" fn snek_minor_gc(curr_rbp: *const u64, curr_rsp: *const u64) {
+#[export_name = "\x01snek_minor_gc"]
+pub unsafe fn snek_minor_gc(curr_rbp: *const u64, curr_rsp: *const u64) {
     snek_minor_major_copy_gc(curr_rbp, curr_rsp, None)
 }
 
@@ -125,7 +219,7 @@ unsafe fn live_minor_minor_refs(
     }
 }
 
-unsafe fn snek_minor_major_copy_gc(
+pub unsafe fn snek_minor_major_copy_gc(
     curr_rbp: *const u64,
     curr_rsp: *const u64,
     minor_stack_refs: Option<HashSet<(*const u64, *const u64)>>,
@@ -190,7 +284,8 @@ unsafe fn snek_minor_major_copy_gc(
     }
 }
 
-unsafe extern "C" fn snek_major_gc(curr_rbp: *const u64, curr_rsp: *const u64) {
+#[export_name = "\x01snek_major_gc"]
+pub unsafe fn snek_major_gc(curr_rbp: *const u64, curr_rsp: *const u64) {
     let major_heap_free_ptr = *HEAP_START.add(3) as *const u64;
     let stack_base = *HEAP_START.add(2) as *const u64;
     let (major_stack_refs, minor_stack_refs) = root_set(stack_base, curr_rbp, curr_rsp);
@@ -222,6 +317,7 @@ unsafe extern "C" fn snek_major_gc(curr_rbp: *const u64, curr_rsp: *const u64) {
 
 enum StackIterType {
     ValIter,
+    #[allow(dead_code)]
     RetPtrIter,
     EntryIter,
 }
@@ -248,6 +344,7 @@ impl Stack {
     unsafe fn iter_val(&self) -> StackIter {
         StackIter::new(self, StackIterType::ValIter)
     }
+    #[allow(dead_code)]
     unsafe fn iter_retptr(&self) -> StackIter {
         StackIter::new(self, StackIterType::RetPtrIter)
     }
@@ -305,6 +402,7 @@ impl StackIter {
         Some(val)
     }
 
+    #[allow(dead_code)]
     unsafe fn next_retptr(&mut self) -> Option<(*const u64, u64)> {
         // Ignore the final return pointer to main
         if self.curr_rbp.offset_from(self.stack.rsp_base) >= -1 {
@@ -337,6 +435,29 @@ impl Iterator for StackIter {
                 StackIterType::ValIter => self.next_val(),
                 StackIterType::RetPtrIter => self.next_retptr(),
                 StackIterType::EntryIter => self.next_entry(),
+            }
+        }
+    }
+}
+
+// Remove stale entries from REMEMBERED MAP
+unsafe fn clean_remembered_map() {
+    let minor_lower = HEAP_START.add(HEAP_META_SIZE);
+    let minor_upper = *HEAP_START as *const u64;
+    for (lst, offsets) in (*REMEMBERED_MAP).iter_mut() {
+        for offset in offsets.clone().iter() {
+            let val = *lst.add(*offset);
+
+            if val & 3 != 1 || val == 1 {
+                // Not a valid pointer
+                offsets.remove(offset);
+                continue;
+            }
+            let val = (val - 1) as *const u64;
+            if val.offset_from(minor_lower) < 0 || minor_upper.offset_from(val) < 0 {
+                // Not in Nursery
+                offsets.remove(offset);
+                continue;
             }
         }
     }
@@ -399,21 +520,7 @@ unsafe fn root_set(
         }
     }
 
-    let define_stack_ptr = (*DEFINE_STACK).as_ptr();
-    for (i, val) in (*DEFINE_STACK).iter().enumerate() {
-        let val = *val;
-        if val & 3 == 1 && val != 1 {
-            let ptr = (val - 1) as *const u64;
-            let stack_ptr = define_stack_ptr.add(i);
-            if ptr.offset_from(major_lower) >= 0 && major_upper.offset_from(ptr) > 0 {
-                major_set.insert((stack_ptr, ptr));
-            }
-            if ptr.offset_from(minor_lower) >= 0 && minor_upper.offset_from(ptr) > 0 {
-                minor_set.insert((stack_ptr, ptr));
-            }
-        }
-    }
-
+    clean_remembered_map();
     // Track references from REMEMBERED set just like stack references
     for (major_heap_lst, offsets) in &*REMEMBERED_MAP {
         for offset in offsets {
@@ -525,7 +632,7 @@ unsafe fn compact(heap_ptr: *const u64) {
     *(HEAP_START.add(3) as *mut u64) = r15 as u64;
 }
 
-#[allow(dead_code)]
+#[export_name = "\x01snek_print_heap"]
 unsafe fn print_heap() {
     println!("=>Start heap");
     let major_lower = *HEAP_START.add(1) as *const u64;
@@ -563,8 +670,10 @@ unsafe fn print_heap() {
     println!("=>End heap");
 }
 
-#[allow(dead_code)]
-unsafe fn snek_print_stack(curr_rsp: *const u64) {
+/// A helper function that can called with the `(snek-printstack)` snek function. It prints the stack
+/// See [`snek_try_gc`] for a description of the meaning of the arguments.
+#[export_name = "\x01snek_print_stack"]
+pub unsafe fn snek_print_stack(curr_rsp: *const u64) {
     let stack_base = *HEAP_START.add(2) as *const u64;
     let stack = Stack::new(curr_rsp, curr_rsp, stack_base);
     println!("-----------------------------------------");
@@ -574,333 +683,37 @@ unsafe fn snek_print_stack(curr_rsp: *const u64) {
     println!("-----------------------------------------");
 }
 
-pub fn add_interface_calls(
-    ops: &mut Assembler,
-    lbls: &mut HashMap<Label, DynamicLabel>,
-    exit: bool,
-) {
-    let snek_error_lbl = ops.new_dynamic_label();
-    lbls.insert(Label::new(Some("snek_error_stub")), snek_error_lbl);
-    dynasm!(ops; .arch x64; =>snek_error_lbl);
-    if exit {
-        dynasm!(ops; .arch x64; mov rax, QWORD snek_error_exit as _);
+fn main() {
+    let args: Vec<String> = env::args().collect();
+    let input = if args.len() >= 2 { &args[1] } else { "false" };
+    let input = parse_input(&input);
+    let heap_size = if args.len() >= 3 {
+        args[2].parse::<usize>().expect("heap size should be usize")
     } else {
-        dynasm!(ops; .arch x64; mov rax, QWORD snek_error_print as _);
-    }
-    dynasm!(ops
-        ; .arch x64
-        ; mov rsp, [r15 + 16]
-        ; pop rbp
-        ; jmp rax
-        ; ret
-    );
-
-    let snek_print_lbl = ops.new_dynamic_label();
-    lbls.insert(Label::new(Some("snek_print")), snek_print_lbl);
-    dynasm!(ops
-        ; .arch x64
-        ; =>snek_print_lbl
-        ; mov rax, QWORD print_result as _
-        ; jmp rax
-        ; ret
-    );
-
-    let snek_deep_equal_lbl = ops.new_dynamic_label();
-    lbls.insert(Label::new(Some("snek_deep_equal")), snek_deep_equal_lbl);
-    dynasm!(ops
-        ; .arch x64
-        ; =>snek_deep_equal_lbl
-        ; mov rax, QWORD deep_equal as _
-        ; jmp rax
-        ; ret
-    );
-
-    let snek_try_gc_lbl = ops.new_dynamic_label();
-    lbls.insert(Label::new(Some("snek_try_gc")), snek_try_gc_lbl);
-    dynasm!(ops
-        ; .arch x64
-        ; =>snek_try_gc_lbl
-        ; mov rax, QWORD snek_try_gc as _
-        ; jmp rax
-        ; ret
-    );
-    let snek_major_gc_lbl = ops.new_dynamic_label();
-    lbls.insert(Label::new(Some("snek_major_gc")), snek_major_gc_lbl);
-    dynasm!(ops
-        ; .arch x64
-        ; =>snek_major_gc_lbl
-        ; mov rax, QWORD snek_major_gc as _
-        ; jmp rax
-        ; ret
-    );
-    let snek_minor_gc_lbl = ops.new_dynamic_label();
-    lbls.insert(Label::new(Some("snek_minor_gc")), snek_minor_gc_lbl);
-    dynasm!(ops
-        ; .arch x64
-        ; =>snek_minor_gc_lbl
-        ; mov rax, QWORD snek_minor_gc as _
-        ; jmp rax
-        ; ret
-    );
-    let snek_write_barrier_lbl = ops.new_dynamic_label();
-    lbls.insert(
-        Label::new(Some("snek_write_barrier")),
-        snek_write_barrier_lbl,
-    );
-    dynasm!(ops
-        ; .arch x64
-        ; =>snek_write_barrier_lbl
-        ; mov rax, QWORD snek_write_barrier as _
-        ; jmp rax
-        ; ret
-    );
-}
-
-pub fn parse_input(input: &str) -> (i64, Option<Type>) {
-    // parse the input string into internal value representation
-    match input {
-        "true" => (TRUE_VAL, Some(Type::Bool)),
-        "false" | "" => (FALSE_VAL, Some(Type::Bool)),
-        _ => (
-            (input.parse::<i64>().expect("Invalid") as i64) << 1,
-            Some(Type::Int),
-        ),
-    }
-}
-
-pub fn deep_equal_recurse(l: i64, r: i64, seen: &mut HashSet<(i64, i64)>) -> bool {
-    // If not list, early exit
-    if l & 3 != 1 || r & 3 != 1 || l == NIL_VAL || r == NIL_VAL {
-        return l == r;
-    }
-
-    if seen.contains(&(l, r)) {
-        return true;
-    }
-    seen.insert((l, r));
-
-    let la = (l - 1) as *const i64;
-    let ra = (r - 1) as *const i64;
-    let lc = unsafe { *la.add(1) } as isize;
-    let rc = unsafe { *ra.add(1) } as isize;
-    // Check length
-    if lc != rc {
-        return false;
-    }
-    for i in 0..lc {
-        let ln = unsafe { *la.offset(i + 2) };
-        let rn = unsafe { *ra.offset(i + 2) };
-        if !deep_equal_recurse(ln, rn, seen) {
-            return false;
-        }
-    }
-    return true;
-}
-
-extern "C" fn deep_equal(l: i64, r: i64) -> i64 {
-    if deep_equal_recurse(l, r, &mut HashSet::new()) {
-        TRUE_VAL
-    } else {
-        FALSE_VAL
-    }
-}
-
-fn snek_str(val: i64, seen: &mut HashSet<i64>) -> String {
-    if val == TRUE_VAL {
-        "true".to_string()
-    } else if val == FALSE_VAL {
-        "false".to_string()
-    } else if val % 2 == 0 {
-        format!("{}", val >> 1)
-    } else if val == NIL_VAL {
-        "nil".to_string()
-    } else if val & 1 == 1 {
-        if !seen.insert(val) {
-            return "[...]".to_string();
-        }
-        let addr = (val - 1) as *const i64;
-        let count = unsafe { *addr.add(1) } as usize;
-        let mut v: Vec<i64> = vec![0; count];
-        for i in 0..count {
-            v[i] = unsafe { *addr.add(i + 2) };
-        }
-        let result = format!(
-            "[{}]",
-            v.iter()
-                .map(|x| snek_str(*x, seen))
-                .collect::<Vec<String>>()
-                .join(", ")
-        );
-        seen.remove(&val);
-        return result;
-    } else {
-        format!("unknown value: {}", val)
-    }
-}
-
-pub fn print_result(result: i64) -> i64 {
-    println!("{}", snek_str(result, &mut HashSet::new()));
-    return result;
-}
-
-pub fn asm_repl_func_defn(
-    ops: &mut Assembler,
-    com: &mut ContextMut,
-    lbls: &mut HashMap<Label, DynamicLabel>,
-    f: &FunDefEnv,
-    arg_types: &Vec<Type>,
-    rbp: *const u64,
-    rsp: *const u64,
-) {
-    let old_ptr_start: i64 = {
-        let reader = ops.reader();
-        let buf = reader.lock();
-        unsafe { mem::transmute(buf.ptr(AssemblyOffset(0))) }
+        16384
     };
-    let stub = ops.new_dynamic_label();
-    lbls.insert(Label::new(Some(&format!("fun_{}", f.name))), stub);
-    let fast = *lbls
-        .get(&Label::new(Some(&format!("fnf_{}", f.name))))
-        .unwrap();
-    let slow = *lbls
-        .get(&Label::new(Some(&format!("fns_{}", f.name))))
-        .unwrap();
+    let nursery_size = heap_size / 10;
+    let heap_len = HEAP_META_SIZE + heap_size;
+    let mut heap = vec![0; heap_len];
+    // Nursery offset
+    heap[0] = unsafe { heap.as_mut_ptr().add(HEAP_META_SIZE) } as u64;
+    // Nursery end of heap
+    heap[1] = unsafe { heap.as_mut_ptr().add(HEAP_META_SIZE + nursery_size) } as u64;
+    // Placeholder for Rsp base
+    heap[2] = 0;
+    // Main GC offset
+    heap[3] = heap[1];
+    // Main GC end of heap
+    heap[4] = unsafe { heap.as_mut_ptr().add(heap_len) } as u64;
+    // Length of nursery
+    heap[5] = nursery_size as u64;
 
-    // Compile new Stub
-    dynasm!(ops; .arch x64; => stub);
-    for (i, arg) in arg_types.iter().enumerate() {
-        // -1 to skip Rbp, + 1 to skip the top word
-        let i = (i as i32 - f.depth) * 8;
-        match arg {
-            Type::Int => {
-                dynasm!(ops; .arch x64; test [rsp+i], 1; jnz =>slow);
-            }
-            Type::Bool => {
-                dynasm!(ops
-                    ; .arch x64
-                    ; mov rax, [rsp+i]
-                    ; and rax, 3
-                    ; cmp rax, 3
-                    ; jne =>slow
-                );
-            }
-            Type::List => {
-                dynasm!(ops; .arch x64; mov rax, [rsp+i]; and rax, 3; cmp rax, 1; jne =>slow);
-            }
-        }
-    }
-    dynasm!(ops; .arch x64; jmp =>fast);
-
-    if let Expr::FnDefn(name, vars, body) = &f.defn {
-        // Compile Slow
-        let mut instrs = vec![];
-        let mut co = Context::new(None)
-            // 1 + to skip the top word
-            .modify_si(1 + vars.len() as i32)
-            // Function body is tail position
-            .modify_tail(true);
-
-        for (i, v) in vars.iter().enumerate() {
-            let existing = co.env.get(v.as_str());
-            if existing.is_some() && !existing.unwrap().defined {
-                panic!("duplicate parameter binding in definition");
-            }
-            // Top word is for co.si, so i+1
-            co.env
-                .insert(v.to_string(), VarEnv::new(i as i32 + 1, None, false));
-        }
-
-        com.depth = f.depth;
-        instrs.extend(vec![
-            Instr::LabelI(Label::new(Some(&format!("fns_{name}")))),
-            Instr::Push(Reg::Rbp),
-            Instr::Mov(MovArgs::ToReg(Reg::Rbp, Arg64::OReg(Reg::Rsp))),
-            Instr::Sub(MovArgs::ToReg(Reg::Rsp, Arg64::Imm(com.depth * 8))),
-        ]);
-        instrs.extend(compile_expr(&body, &co, com));
-        instrs.extend(vec![
-            Instr::Add(MovArgs::ToReg(Reg::Rsp, Arg64::Imm(com.depth * 8))),
-            Instr::Pop(Reg::Rbp),
-            Instr::Ret,
-        ]);
-
-        // Compile Fast
-        let mut co = Context::new(None)
-            // 1 + to skip the top word
-            .modify_si(1 + vars.len() as i32)
-            // Function body is tail position
-            .modify_tail(true);
-
-        for (i, v) in vars.iter().enumerate() {
-            let existing = co.env.get(v.as_str());
-            if existing.is_some() && !existing.unwrap().defined {
-                panic!("duplicate parameter binding in definition");
-            }
-            co.env.insert(
-                v.to_string(),
-                // Top word is for co.si, so i+1
-                VarEnv::new(i as i32 + 1, Some(arg_types[i]), false),
-            );
-        }
-
-        com.depth = f.depth;
-        instrs.extend(vec![
-            Instr::LabelI(Label::new(Some(&format!("fnf_{name}")))),
-            Instr::Push(Reg::Rbp),
-            Instr::Mov(MovArgs::ToReg(Reg::Rbp, Arg64::OReg(Reg::Rsp))),
-            Instr::Sub(MovArgs::ToReg(Reg::Rsp, Arg64::Imm(com.depth * 8))),
-        ]);
-        instrs.extend(compile_expr(&body, &co, com));
-        instrs.extend(vec![
-            Instr::Add(MovArgs::ToReg(Reg::Rsp, Arg64::Imm(com.depth * 8))),
-            Instr::Pop(Reg::Rbp),
-            Instr::Ret,
-        ]);
-
-        // Assemble both the fast and slow versions
-        instrs_to_asm(&instrs, ops, lbls);
-    } else {
-        panic!("Compiling wrong thing here: {:?}", f.defn);
+    unsafe {
+        HEAP_START = heap.as_ptr();
+        REMEMBERED_MAP = &mut HashMap::new();
     }
 
-    ops.commit().unwrap();
+    let i: i64 = unsafe { our_code_starts_here(input, HEAP_START as *mut u64) };
 
-    // Alter original stub to jump into new stub
-    ops.alter(|ops| {
-        ops.goto(f.orig);
-        dynasm!(ops; .arch x64; jmp =>stub);
-    })
-    .unwrap();
-
-    // Fix the call stack if the ops was relocated
-    let new_ptr_start: i64 = {
-        let reader = ops.reader();
-        let buf = reader.lock();
-        unsafe { mem::transmute(buf.ptr(AssemblyOffset(0))) }
-    };
-
-    let diff = new_ptr_start - old_ptr_start;
-    // Closure to fix the return pointers on the stack
-    let fix = |old: *const u64| unsafe {
-        if diff > 0 {
-            *old + diff as u64
-        } else {
-            *old - (-diff) as u64
-        }
-    };
-    if diff != 0 {
-        unsafe {
-            let base = *HEAP_START.add(2) as *const u64;
-
-            // Modify rust function_compile_runtime's return
-            let runtime_ret = rsp.sub(1);
-            *(runtime_ret as *mut u64) = fix(runtime_ret);
-
-            // Modify stack references
-            let stack = Stack::new(rbp, rsp, base);
-            for (ptr, _) in stack.iter_retptr() {
-                *(ptr as *mut u64) = fix(ptr);
-            }
-        }
-    }
+    print_result(i);
 }

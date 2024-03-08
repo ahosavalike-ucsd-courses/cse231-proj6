@@ -28,7 +28,7 @@
 
 ; (output "[[1, [[2, [...]]], [[3, [...]]]]]")
 ; ((input true) (output "[[1, [[2, [...]]], [[3, [...]]]]]"))
-; ((input true) (heap_size 25) (output "[[1, [[2, [...]]], [[3, [...]]]]]"))
-; ((input true) (heap_size 24) (dynamic "out of memory"))
-; ((input false) (heap_size 25) (output "[[1, [[2, [...]]], [[3, [...]]]]]"))
-; ((input false) (heap_size 24) (dynamic "out of memory"))
+; ((input true) (heap_size 27) (output "[[1, [[2, [...]]], [[3, [...]]]]]"))
+; ((input true) (heap_size 26) (dynamic "out of memory"))
+; ((input false) (heap_size 27) (output "[[1, [[2, [...]]], [[3, [...]]]]]"))
+; ((input false) (heap_size 26) (dynamic "out of memory"))

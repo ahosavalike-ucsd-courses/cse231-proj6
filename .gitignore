@@ -1,8 +1,7 @@
-/target
+**/target
 /tests/*.[soa]
 /tests/*.run
 /tests/*.run.dSYM
 config.txt
-changelog/
 build.rs
 .vscode/
